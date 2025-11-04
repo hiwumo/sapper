@@ -1,0 +1,99 @@
+.top-nav {
+  display: flex;
+  align-items: center;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.nav-tabs {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.nav-tabs::-webkit-scrollbar {
+  height: 0;
+}
+
+.nav-tab {
+  display: flex;
+  font-family: "Balsamiq Sans", sans-serif;
+  align-items: center;
+  padding: 0 1rem;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-right: 1px solid #2a2a2a;
+  color: #aaa;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.nav-tab:hover {
+  background: #222;
+  color: #fff;
+}
+
+.nav-tab.active {
+  background: #2b2b2b;
+  color: #fff;
+  border-bottom: 2px solid #0066cc;
+}
+
+.conversation-tab {
+  padding: 0;
+  gap: 0.5rem;
+}
+
+.tab-label {
+  padding: 0 0.75rem;
+  background: transparent;
+  font-family: "Balsamiq Sans", sans-serif;
+  border: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  height: 100%;
+}
+
+.close-tab {
+  padding: 0 0.5rem;
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.close-tab:hover {
+  color: #ff6b6b;
+}
+
+.settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-left: 1px solid #2a2a2a;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.settings-button:hover {
+  background: #222;
+  color: #fff;
+}

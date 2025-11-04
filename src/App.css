@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Balsamiq+Sans:ital,wght@0,400;0,700;1,400;1,700&family=Momo+Trust+Display&display=swap');
+
+@font-face {
+  font-family: 'gg sans';
+  font-style: normal;
+  font-weight: 400;
+  src: local('fonts/gg sans Regular'), url('fonts/gg sans Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'gg sans';
+  font-style: normal;
+  font-weight: 500;
+  src: local('fonts/gg sans Medium'), url('fonts/gg sans Medium.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'gg sans';
+  font-style: normal;
+  font-weight: 600;
+  src: local('fonts/gg sans SemiBold'), url('fonts/gg sans Semibold.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'gg sans';
+  font-style: normal;
+  font-weight: 700;
+  src: local('fonts/gg sans Bold'), url('fonts/gg sans Bold.woff') format('woff');
+}
+
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Balsamiq Sans", sans-serif;
+  font-style: normal;
+  background: #0f0f0f;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.content {
+  flex: 1;
+  overflow: hidden;
+  background: #0f0f0f;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 1.2rem;
+  color: #888;
+}
+
+/* Headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-style: normal;
+  color: #ffffff;
+  margin-bottom: 0.5em;
+  line-height: 1.2;
+}
+
+.title {
+  font-family: "Momo Trust Display", sans-serif;
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 1.75rem;
+  font-weight: 500;
+}
+
+h4 {
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+h5 {
+  font-size: 1.25rem;
+  font-weight: 400;
+}
+
+h6 {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* Paragraphs */
+p {
+  font-family: "Balsamiq Sans", sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  color: #ccc;
+  line-height: 1.6;
+  margin-bottom: 1em;
+}
+
+/* Subtitle / Secondary text */
+p.subtitle {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #888;
+  margin-bottom: 0.75em;
+}
+
+/* Additional useful text styles */
+small {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+strong {
+  font-weight: 600;
+  color: #fff;
+}
+
+em {
+  font-style: italic;
+  color: #aaa;
+}
+
+/* Links */
+a {
+  color: #1e90ff;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: #63b3ed;
+  text-decoration: underline;
+}
+
+/* Utility classes */
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-muted {
+  color: #777;
+}

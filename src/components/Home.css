@@ -1,0 +1,73 @@
+.home {
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.home-header {
+  margin-bottom: 2rem;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.home-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2rem;
+  color: #ffffff;
+}
+
+.import-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: #0066cc;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.import-btn:hover {
+  background: #0052a3;
+}
+
+.subtitle {
+  margin: 0;
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #666;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h2 {
+  margin: 0 0 0.5rem 0;
+  color: #888;
+}
+
+.empty-state p {
+  margin: 0;
+  color: #666;
+}
+
+.imports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
