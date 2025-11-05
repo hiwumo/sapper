@@ -154,6 +154,10 @@ impl SapperCore {
         let search_index = MessageSearchIndex::create(&index_dir)?;
         search_index.index_messages(&stored_messages)?;
 
+        // Extract and store members
+        let members = self.extract_members(&export_data)?;
+        self.save_members(&import_dir, &members)?;
+
         // Create import entry
         let import_entry = ImportEntry {
             id: import_id.clone(),
@@ -332,6 +336,112 @@ impl SapperCore {
         Ok(())
     }
 
+    // Extract unique members from export messages
+    fn extract_members(&self, export: &DiscordExport) -> io::Result<MemberStorage> {
+        use std::collections::HashMap;
+
+        let mut members_map: HashMap<String, Member> = HashMap::new();
+
+        for msg in &export.messages {
+            let author_id = msg.author.id.clone();
+
+            // Only add if we haven't seen this author before
+            if !members_map.contains_key(&author_id) {
+                members_map.insert(
+                    author_id.clone(),
+                    Member {
+                        id: author_id,
+                        name: msg.author.name.clone(),
+                        discriminator: msg.author.discriminator.clone(),
+                        nickname: msg.author.nickname.clone(),
+                        avatar_url: msg.author.avatar_url.clone(),
+                        color: msg.author.color.clone(),
+                        is_bot: msg.author.is_bot,
+                        roles: msg.author.roles.clone(),
+                    },
+                );
+            }
+        }
+
+        let mut members: Vec<Member> = members_map.into_values().collect();
+        // Sort by ID for consistency
+        members.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Ok(MemberStorage { members })
+    }
+
+    // Save members to import directory
+    fn save_members(&self, import_dir: &Path, members: &MemberStorage) -> io::Result<()> {
+        let members_path = import_dir.join("members.json");
+        let temp_path = import_dir.join("members.json.tmp");
+
+        let contents = serde_json::to_string_pretty(members)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        fs::write(&temp_path, contents)?;
+        fs::rename(temp_path, members_path)?;
+
+        Ok(())
+    }
+
+    // Load members from import directory
+    pub fn load_members(&self, import_id: &str) -> io::Result<MemberStorage> {
+        let metadata = self.load_metadata()?;
+        let import_entry = metadata
+            .imports
+            .iter()
+            .find(|e| e.id == import_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
+
+        let members_path = PathBuf::from(&import_entry.import_path).join("members.json");
+
+        if !members_path.exists() {
+            // If members.json doesn't exist (old imports), create it from the export
+            let export = self.load_export(import_id)?;
+            let members = self.extract_members(&export)?;
+            self.save_members(&PathBuf::from(&import_entry.import_path), &members)?;
+            return Ok(members);
+        }
+
+        let contents = fs::read_to_string(members_path)?;
+        serde_json::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+
+    // Update a specific member's information
+    pub fn update_member(
+        &self,
+        import_id: &str,
+        member_id: &str,
+        nickname: Option<String>,
+        avatar_url: Option<String>,
+    ) -> io::Result<()> {
+        let metadata = self.load_metadata()?;
+        let import_entry = metadata
+            .imports
+            .iter()
+            .find(|e| e.id == import_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
+
+        let import_dir = PathBuf::from(&import_entry.import_path);
+        let mut members = self.load_members(import_id)?;
+
+        if let Some(member) = members.members.iter_mut().find(|m| m.id == member_id) {
+            if let Some(nick) = nickname {
+                member.nickname = nick;
+            }
+            if let Some(avatar) = avatar_url {
+                member.avatar_url = avatar;
+            }
+            self.save_members(&import_dir, &members)?;
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Member not found",
+            ))
+        }
+    }
+
     fn extract_avatar(
         &self,
         export: &DiscordExport,
@@ -477,8 +587,11 @@ impl SapperCore {
         let mut current_metadata = self.load_metadata()?;
 
         // Merge imports (avoid duplicates by file_hash)
-        let existing_hashes: std::collections::HashSet<String> =
-            current_metadata.imports.iter().map(|e| e.file_hash.clone()).collect();
+        let existing_hashes: std::collections::HashSet<String> = current_metadata
+            .imports
+            .iter()
+            .map(|e| e.file_hash.clone())
+            .collect();
 
         for source_entry in source_metadata.imports {
             // Skip if already exists (same file hash)
@@ -615,9 +728,9 @@ impl SapperCore {
     ) -> io::Result<usize> {
         let json_path_buf = PathBuf::from(json_path);
         let source_folder_buf = PathBuf::from(source_folder);
-        let dest_dir = json_path_buf.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "Invalid JSON path")
-        })?;
+        let dest_dir = json_path_buf
+            .parent()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid JSON path"))?;
 
         if !source_folder_buf.exists() {
             return Err(io::Error::new(

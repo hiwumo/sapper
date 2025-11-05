@@ -1,6 +1,6 @@
 import MessageAvatar from "./MessageAvatar";
 
-function MessageReply({ referencedMessage, importPath }) {
+function MessageReply({ referencedMessage, importPath, onReplyClick }) {
   if (!referencedMessage) return null;
 
   const replyContent = referencedMessage.content
@@ -11,8 +11,14 @@ function MessageReply({ referencedMessage, importPath }) {
       ? "Click to see attachment"
       : "Click to see original message";
 
+  const handleClick = () => {
+    if (onReplyClick && referencedMessage.id !== undefined) {
+      onReplyClick(referencedMessage.id);
+    }
+  };
+
   return (
-    <div className="message-reply-reference">
+    <div className="message-reply-reference" onClick={handleClick} style={{ cursor: onReplyClick ? 'pointer' : 'default' }}>
       <div className="reply-line"></div>
       <div className="reply-avatar">
         <MessageAvatar

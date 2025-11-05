@@ -117,11 +117,47 @@ pub struct ImportEntry {
     pub avatar_path: String,
 }
 
+// Member storage for conversations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Member {
+    pub id: String,            // Discord user ID
+    pub name: String,          // Original username
+    pub discriminator: String, // Discord discriminator (e.g., "0001")
+    pub nickname: String,      // Display name (editable)
+    pub avatar_url: String,    // Path to avatar file (editable)
+    pub color: Option<String>, // Role color
+    pub is_bot: bool,
+    pub roles: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberStorage {
+    pub members: Vec<Member>,
+}
+
+impl Default for MemberStorage {
+    fn default() -> Self {
+        Self {
+            members: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub theme: String,
     pub last_opened_chat: Option<String>,
+    #[serde(default)]
+    pub conversation_positions: std::collections::HashMap<String, ConversationPosition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationPosition {
+    pub message_id: u64,
 }
 
 impl Default for AppConfig {
@@ -129,6 +165,7 @@ impl Default for AppConfig {
         Self {
             theme: "dark".to_string(),
             last_opened_chat: None,
+            conversation_positions: std::collections::HashMap::new(),
         }
     }
 }

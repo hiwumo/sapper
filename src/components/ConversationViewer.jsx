@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Hash, AtSign, Search, FolderOpen } from "lucide-react";
+import { Hash, AtSign, Search, FolderOpen, ArrowDown } from "lucide-react";
 import { themes } from "../themes";
 import Message from "./Message";
 import MessageAvatar from "./MessageAvatar";
+import MemberEditor from "./MemberEditor";
 import "./ConversationViewer.css";
 
 const MESSAGES_PER_PAGE = 50;
@@ -27,12 +28,16 @@ function ConversationViewer({ importId, theme }) {
   const [members, setMembers] = useState([]);
   const [viewingImage, setViewingImage] = useState(null);
   const [searchPage, setSearchPage] = useState(0);
+  const [memberEditorOpen, setMemberEditorOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const scrollRestorationRef = useRef(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const savePositionTimeoutRef = useRef(null);
 
   const setMessages = _setMessages;
 
@@ -61,19 +66,98 @@ function ConversationViewer({ importId, theme }) {
   }, [messages]);
 
   useEffect(() => {
-    // Extract unique members from messages
-    const uniqueMembers = new Map();
-    messages.forEach(msg => {
-      if (!uniqueMembers.has(msg.author.nickname)) {
-        uniqueMembers.set(msg.author.nickname, {
-          name: msg.author.nickname,
-          avatar: msg.author.avatarUrl,
-          color: msg.author.color,
+    // Load members from backend
+    const loadMembers = async () => {
+      try {
+        const result = await invoke("get_members", { importId });
+        if (result && result.members) {
+          // Sort members by ID and format for display
+          const sortedMembers = result.members
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map(m => ({
+              id: m.id,
+              name: m.nickname,
+              avatar: m.avatarUrl,
+              color: m.color,
+              discriminator: m.discriminator,
+              isBot: m.isBot,
+            }));
+          setMembers(sortedMembers);
+        }
+      } catch (error) {
+        console.error("Failed to load members:", error);
+        // Fallback to extracting from messages if members.json doesn't exist
+        const uniqueMembers = new Map();
+        messages.forEach(msg => {
+          if (!uniqueMembers.has(msg.author.id)) {
+            uniqueMembers.set(msg.author.id, {
+              id: msg.author.id,
+              name: msg.author.nickname,
+              avatar: msg.author.avatarUrl,
+              color: msg.author.color,
+              discriminator: msg.author.discriminator,
+              isBot: msg.author.isBot,
+            });
+          }
         });
+        const membersArray = Array.from(uniqueMembers.values());
+        membersArray.sort((a, b) => a.id.localeCompare(b.id));
+        setMembers(membersArray);
       }
+    };
+
+    if (importId) {
+      loadMembers();
+    }
+  }, [importId]);
+
+  // Create member lookup map by author ID
+  const memberLookup = useMemo(() => {
+    const lookup = new Map();
+    members.forEach(member => {
+      lookup.set(member.id, member);
     });
-    setMembers(Array.from(uniqueMembers.values()));
-  }, [messages]);
+    return lookup;
+  }, [members]);
+
+  // Apply stored member info to messages
+  const messagesWithStoredMembers = useMemo(() => {
+    return messages.map(msg => {
+      const storedMember = memberLookup.get(msg.author.id);
+      if (storedMember) {
+        // Replace author info with stored member info
+        return {
+          ...msg,
+          author: {
+            ...msg.author,
+            nickname: storedMember.name,
+            avatarUrl: storedMember.avatar,
+            color: storedMember.color,
+          },
+        };
+      }
+      return msg;
+    });
+  }, [messages, memberLookup]);
+
+  // Apply stored member info to search results
+  const searchResultsWithStoredMembers = useMemo(() => {
+    return searchResults.map(msg => {
+      const storedMember = memberLookup.get(msg.author.id);
+      if (storedMember) {
+        return {
+          ...msg,
+          author: {
+            ...msg.author,
+            nickname: storedMember.name,
+            avatarUrl: storedMember.avatar,
+            color: storedMember.color,
+          },
+        };
+      }
+      return msg;
+    });
+  }, [searchResults, memberLookup]);
 
   async function loadInitialData() {
     try {
@@ -96,16 +180,38 @@ function ConversationViewer({ importId, theme }) {
       const total = await invoke("get_total_message_count", { importId });
       setTotalMessages(total);
 
-      // Load last 50 messages (newest)
-      const startIndex = Math.max(0, total - MESSAGES_PER_PAGE);
+      // Check for saved position
+      const savedPosition = await invoke("get_conversation_position", { importId });
+
+      let startIndex, count;
+      if (savedPosition !== null && savedPosition !== undefined) {
+        // Load messages around saved position
+        startIndex = Math.max(0, savedPosition - 25);
+        count = MESSAGES_PER_PAGE;
+      } else {
+        // Load last 50 messages (newest) - default behavior
+        startIndex = Math.max(0, total - MESSAGES_PER_PAGE);
+        count = MESSAGES_PER_PAGE;
+      }
+
       const loadedMessages = await invoke("load_messages", {
         importId,
         startIndex,
-        count: MESSAGES_PER_PAGE,
+        count,
       });
 
       console.log(loadedMessages);
       setMessages(loadedMessages);
+
+      // If we have a saved position, scroll to it after a brief delay
+      if (savedPosition !== null && savedPosition !== undefined) {
+        setTimeout(() => {
+          const messageElement = document.querySelector(`[data-message-id="${savedPosition}"]`);
+          if (messageElement) {
+            messageElement.scrollIntoView({ block: "center" });
+          }
+        }, 100);
+      }
     } catch (err) {
       console.error("Failed to load conversation:", err);
       await invoke("log_frontend_error", { message: `Failed to load conversation ${importId}: ${err.toString()}` });
@@ -295,11 +401,44 @@ function ConversationViewer({ importId, theme }) {
     if (!messagesContainerRef.current || isLoadingMore) return;
 
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const scrolledFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // Show jump to bottom button if scrolled up more than 1 chunk worth (rough estimate: 1000px)
+    setShowJumpToBottom(scrolledFromBottom > 1000);
+
+    // Save scroll position (debounced)
+    if (messages.length > 0) {
+      if (savePositionTimeoutRef.current) {
+        clearTimeout(savePositionTimeoutRef.current);
+      }
+      savePositionTimeoutRef.current = setTimeout(() => {
+        // Find the first visible message (approximate)
+        const container = messagesContainerRef.current;
+        if (container) {
+          const messageElements = container.querySelectorAll('[data-message-id]');
+          for (const el of messageElements) {
+            const rect = el.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            if (rect.top >= containerRect.top && rect.top <= containerRect.bottom) {
+              const messageId = parseInt(el.getAttribute('data-message-id'));
+              invoke("save_conversation_position", { importId, messageId }).catch(console.error);
+              break;
+            }
+          }
+        }
+      }, 1000);
+    }
 
     if (scrollTop < 100 && messages.length > 0 && messages[0].id > 0) {
       loadMoreMessages("up");
     } else if (scrollHeight - scrollTop - clientHeight < 100 && messages.length < totalMessages) {
       loadMoreMessages("down");
+    }
+  }
+
+  function scrollToBottom() {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }
 
@@ -330,7 +469,7 @@ function ConversationViewer({ importId, theme }) {
   const isDM = conversationInfo?.guildId === "0";
 
   // Sort search results based on selected order
-  const sortedSearchResults = [...searchResults].sort((a, b) => {
+  const sortedSearchResults = [...searchResultsWithStoredMembers].sort((a, b) => {
     if (searchSortOrder === "new") {
       return b.timestamp - a.timestamp; // Newest first
     } else {
@@ -451,8 +590,8 @@ function ConversationViewer({ importId, theme }) {
           ref={messagesContainerRef}
           onScroll={handleScroll}
         >
-          {messages.map((message, idx) => {
-            const prevMessage = idx > 0 ? messages[idx - 1] : null;
+          {messagesWithStoredMembers.map((message, idx) => {
+            const prevMessage = idx > 0 ? messagesWithStoredMembers[idx - 1] : null;
             const timeDiff = prevMessage ? message.timestamp - prevMessage.timestamp : Infinity;
             // Break grouping if message has a reply
             const isGrouped = prevMessage &&
@@ -470,6 +609,7 @@ function ConversationViewer({ importId, theme }) {
                   onImageClick={setViewingImage}
                   formatTimestamp={formatTimestamp}
                   convertFileSrc={convertFileSrc}
+                  onReplyClick={jumpToMessage}
                 />
               </div>
             );
@@ -529,6 +669,7 @@ function ConversationViewer({ importId, theme }) {
                             onImageClick={setViewingImage}
                             formatTimestamp={formatTimestamp}
                             convertFileSrc={convertFileSrc}
+                            onReplyClick={jumpToMessage}
                           />
                         </div>
                         <button
@@ -590,7 +731,15 @@ function ConversationViewer({ importId, theme }) {
               </div>
               <div className="member-list-content">
                 {members.map((member, idx) => (
-                  <div key={idx} className="member-item">
+                  <div
+                    key={idx}
+                    className="member-item clickable"
+                    onClick={() => {
+                      setSelectedMember(member);
+                      setMemberEditorOpen(true);
+                    }}
+                    title="Click to edit member"
+                  >
                     <MessageAvatar
                       avatarUrl={member.avatar}
                       name={member.name}
@@ -607,6 +756,13 @@ function ConversationViewer({ importId, theme }) {
         </div>
       </div>
 
+      {/* Jump to Bottom Button */}
+      {showJumpToBottom && (
+        <button className="jump-to-bottom-button" onClick={scrollToBottom}>
+          <ArrowDown size={20} />
+        </button>
+      )}
+
       {/* Image Viewer Modal */}
       {viewingImage && (
         <div className="image-viewer-modal" onClick={() => setViewingImage(null)}>
@@ -618,6 +774,38 @@ function ConversationViewer({ importId, theme }) {
           </div>
         </div>
       )}
+
+      <MemberEditor
+        isOpen={memberEditorOpen}
+        onClose={() => {
+          setMemberEditorOpen(false);
+          setSelectedMember(null);
+        }}
+        member={selectedMember}
+        importId={importId}
+        importPath={importPath}
+        onUpdate={async () => {
+          // Reload members after update
+          try {
+            const result = await invoke("get_members", { importId });
+            if (result && result.members) {
+              const sortedMembers = result.members
+                .sort((a, b) => a.id.localeCompare(b.id))
+                .map(m => ({
+                  id: m.id,
+                  name: m.nickname,
+                  avatar: m.avatarUrl,
+                  color: m.color,
+                  discriminator: m.discriminator,
+                  isBot: m.isBot,
+                }));
+              setMembers(sortedMembers);
+            }
+          } catch (error) {
+            console.error("Failed to reload members:", error);
+          }
+        }}
+      />
     </div>
   );
 }

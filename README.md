@@ -58,6 +58,17 @@ npm run tauri build
 
 The compiled application will be in `src-tauri/target/release/`.
 
+### Creating Releases
+
+For detailed release instructions, see [RELEASE.md](RELEASE.md).
+
+Quick start:
+1. Update version in `src-tauri/tauri.conf.json`
+2. Ensure `.env` has your signing key (see `.env.example`)
+3. Run `make release-github` for a fully automated release
+
+The app includes automatic update functionality - users will be notified when new versions are available.
+
 ## Usage
 
 

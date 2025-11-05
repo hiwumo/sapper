@@ -1,13 +1,12 @@
 use regex::Regex;
 use std::path::PathBuf;
-use tracing_appender::rolling::{ RollingFileAppender, Rotation };
-use tracing_subscriber::{ fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter };
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Initialize the logging system
 /// Logs will be written to a rotating daily log file in the .sapper directory
 pub fn init_logging() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let home_dir = directories::BaseDirs
-        ::new()
+    let home_dir = directories::BaseDirs::new()
         .ok_or("Failed to get home directory")?
         .home_dir()
         .to_path_buf();
@@ -19,16 +18,14 @@ pub fn init_logging() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let file_appender = RollingFileAppender::new(Rotation::DAILY, &log_dir, "sapper.log");
 
     // Set up the logging subscriber with both file and stdout outputs
-    tracing_subscriber
-        ::registry()
+    tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(
-            fmt
-                ::layer()
+            fmt::layer()
                 .with_writer(file_appender)
                 .with_ansi(false)
                 .with_target(true)
-                .with_line_number(true)
+                .with_line_number(true),
         )
         .with(fmt::layer().with_writer(std::io::stdout).with_target(false))
         .init();
@@ -95,10 +92,7 @@ mod tests {
         let emoji_regex = Regex::new(
             r"[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]"
         ).unwrap();
-        let emojis: Vec<&str> = emoji_regex
-            .find_iter(content)
-            .map(|m| m.as_str())
-            .collect();
+        let emojis: Vec<&str> = emoji_regex.find_iter(content).map(|m| m.as_str()).collect();
 
         // Extract Discord custom emojis <:name:id> or <a:name:id>
         let discord_emoji_regex = Regex::new(r"<a?:[a-zA-Z0-9_]+:\d+>").unwrap();
@@ -143,7 +137,10 @@ mod tests {
     #[test]
     fn test_sanitize_message_content() {
         assert_eq!(sanitize_message_content("Hello world!"), "[REDACTED]");
-        assert_eq!(sanitize_message_content("Hello 👋 world!"), "[REDACTED emojis: 👋]");
+        assert_eq!(
+            sanitize_message_content("Hello 👋 world!"),
+            "[REDACTED emojis: 👋]"
+        );
         assert_eq!(sanitize_message_content(""), "");
     }
 

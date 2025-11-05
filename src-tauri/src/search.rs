@@ -109,19 +109,18 @@ impl MessageSearchIndex {
         let content_field = self.schema.get_field("content").unwrap();
         let sender_field = self.schema.get_field("sender").unwrap();
 
-        let mut query_parser = QueryParser::for_index(&self.index, vec![content_field, sender_field]);
+        let mut query_parser =
+            QueryParser::for_index(&self.index, vec![content_field, sender_field]);
 
         // Enable fuzzy search with edit distance of 1 (more conservative)
         query_parser.set_field_fuzzy(content_field, true, 1, true);
         query_parser.set_field_fuzzy(sender_field, true, 1, true);
 
         // Try regular search first, then fuzzy if user adds ~
-        let query = query_parser
-            .parse_query(query_str)
-            .map_err(|e| {
-                eprintln!("Query parse error: {}", e);
-                io::Error::new(io::ErrorKind::InvalidInput, e)
-            })?;
+        let query = query_parser.parse_query(query_str).map_err(|e| {
+            eprintln!("Query parse error: {}", e);
+            io::Error::new(io::ErrorKind::InvalidInput, e)
+        })?;
 
         eprintln!("Parsed query: {:?}", query);
 

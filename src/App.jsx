@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
 import Navbar from "./components/Navbar";
 import Home from "./components/Home";
@@ -8,6 +10,7 @@ import ConversationViewer from "./components/ConversationViewer";
 import ProgressDialog from "./components/ProgressDialog";
 import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
+import UpdateNotification from "./components/UpdateNotification";
 import { getSavedTheme } from "./themes";
 
 function App() {
@@ -215,6 +218,17 @@ function App() {
 
   return (
     <div className="app">
+      <ToastContainer
+        position="bottom-right"
+        autoClose={false}
+        newestOnTop={false}
+        closeOnClick={false}
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        theme="dark"
+      />
+
       {importing && <ProgressDialog message="Importing conversation..." />}
 
       <MissingAssetsDialog
@@ -224,6 +238,8 @@ function App() {
         onContinue={handleMissingAssetsContinue}
         onCancel={handleMissingAssetsCancel}
       />
+
+      <UpdateNotification />
 
       <Navbar
         activeView={activeView}

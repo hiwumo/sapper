@@ -30,3 +30,12 @@ src-tauri/target
 designplan.md
 app-icon.png
 example.json
+todo.md
+
+# Signing key for Tauri update
+.key
+*.key
+*.key.pub
+
+# Environment variables (contains signing key info)
+.env

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, FolderOpen, Download, Upload } from "lucide-react";
 import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,6 +11,22 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
   const [selectedConversations, setSelectedConversations] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
+
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const version = await invoke("get_app_version");
+        setAppVersion(version);
+      } catch (error) {
+        console.error("Failed to fetch app version:", error);
+      }
+    };
+
+    if (isOpen) {
+      fetchVersion();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -123,6 +139,13 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
         </div>
 
         <div className="settings-content">
+          <div className="settings-section app-info">
+            <h3>Sapper</h3>
+            <p className="settings-description version-info">
+              Version {appVersion || "loading..."}
+            </p>
+          </div>
+
           <div className="settings-section">
             <h3>Theme</h3>
             <p className="settings-description">

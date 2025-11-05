@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "notes": "Initial release with updater support",
+  "pub_date": "2025-11-05T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "SIGNATURE_CONTENT_FROM_.SIG_FILE_HERE",
+      "url": "https://github.com/hiwumo/sapper/releases/download/v0.2.0/sapper_0.2.0_x64-setup.exe"
+    }
+  }
+}
