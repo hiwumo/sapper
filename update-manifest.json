@@ -1,11 +1,11 @@
 {
-  "version": "0.2.0",
-  "notes": "Initial release with updater support",
-  "pub_date": "2025-11-05T00:00:00Z",
-  "platforms": {
-    "windows-x86_64": {
-      "signature": "SIGNATURE_CONTENT_FROM_.SIG_FILE_HERE",
-      "url": "https://github.com/hiwumo/sapper/releases/download/v0.2.0/sapper_0.2.0_x64-setup.exe"
-    }
-  }
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSExudUFyTkVKSW8zNXhhMmpEV1dRT3hFb0tNSHRtcUVNZkcyYjZRanNFeGgrVXdmU08rakllQkJFSHJ4dlROVUM4OHY2eW0yZVpzSXpvcko4SWhCMmdQbUxSRDRKVndvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzYyMzc0NTAwCWZpbGU6c2FwcGVyXzAuMi4wX3g2NC1zZXR1cC5leGUKYmVEYVV2TEMzakN3R2ViL3VuTW5VdndGelNmMVJpTWpsOGM0cGVRY2hLdDI1enR3emZtVG1pNkoxeldibDg5UjBWSjdOTGZ1T0pSTThiSXFWRlcwQXc9PQo=",
+                                             "url":  "https://github.com/hiwumo/sapper/releases/download/v0.2.0/sapper_0.2.0_x64-setup.exe"
+                                         }
+                  },
+    "pub_date":  "2025-11-05T20:28:22Z",
+    "version":  "0.2.0",
+    "notes":  "Bug fixes and improvements"
 }
