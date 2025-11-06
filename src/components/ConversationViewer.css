@@ -1312,12 +1312,11 @@
 
 .system-message-content {
   display: flex;
+  justify-content: flex-start;
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 1rem;
   border-radius: 8px;
-  background: rgba(88, 101, 242, 0.1);
-  border-left: 3px solid #5865f2;
 }
 
 .system-message-text {

@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
 import Navbar from "./components/Navbar";
 import Home from "./components/Home";
@@ -11,9 +9,11 @@ import ProgressDialog from "./components/ProgressDialog";
 import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
 import UpdateNotification from "./components/UpdateNotification";
+import { ToastProvider, useToast } from "./components/ToastContainer";
 import { getSavedTheme } from "./themes";
 
-function App() {
+function AppContent() {
+  const toast = useToast();
   const [activeView, setActiveView] = useState("home");
   const [openTabs, setOpenTabs] = useState([]);
   const [imports, setImports] = useState([]);
@@ -122,7 +122,7 @@ function App() {
       }
     } catch (error) {
       console.error("Import failed:", error);
-      alert(`Import failed: ${error}`);
+      toast.error(`Import failed: ${error}`);
     }
   }
 
@@ -144,7 +144,7 @@ function App() {
     } catch (error) {
       setImporting(false);
       console.error("Import failed:", error);
-      alert(`Import failed: ${error}`);
+      toast.error(`Import failed: ${error}`);
     }
   }
 
@@ -184,7 +184,7 @@ function App() {
       closeTab(importId);
     } catch (error) {
       console.error("Unimport failed:", error);
-      alert(`Unimport failed: ${error}`);
+      toast.error(`Unimport failed: ${error}`);
     }
   }
 
@@ -204,7 +204,7 @@ function App() {
       ));
     } catch (error) {
       console.error("Update failed:", error);
-      alert(`Update failed: ${error}`);
+      toast.error(`Update failed: ${error}`);
     }
   }
 
@@ -218,17 +218,6 @@ function App() {
 
   return (
     <div className="app">
-      <ToastContainer
-        position="bottom-right"
-        autoClose={false}
-        newestOnTop={false}
-        closeOnClick={false}
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        theme="dark"
-      />
-
       {importing && <ProgressDialog message="Importing conversation..." />}
 
       <MissingAssetsDialog
@@ -276,6 +265,14 @@ function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
 

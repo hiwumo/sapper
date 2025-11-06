@@ -169,3 +169,28 @@ impl Default for AppConfig {
         }
     }
 }
+
+// Import backup result structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportBackupResult {
+    pub successful: Vec<ImportedConversation>,
+    pub failed: Vec<FailedImport>,
+    pub total_count: usize,
+    pub success_count: usize,
+    pub failed_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedConversation {
+    pub conversation_name: String,
+    pub message_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FailedImport {
+    pub conversation_name: String,
+    pub error: String,
+}

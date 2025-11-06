@@ -363,6 +363,34 @@ fn update_member(
 }
 
 #[tauri::command]
+fn copy_avatar_to_import(
+    state: State<AppState>,
+    import_id: String,
+    source_path: String,
+) -> Result<String, String> {
+    info!(
+        "Copying avatar to import {} from: {}",
+        logger::sanitize_string(&import_id),
+        logger::sanitize_string(&source_path)
+    );
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let relative_path = core
+        .copy_avatar_to_import(&import_id, &source_path)
+        .map_err(|e| {
+            error!("Failed to copy avatar: {}", e);
+            e.to_string()
+        })?;
+
+    info!(
+        "Successfully copied avatar, relative path: {}",
+        logger::sanitize_string(&relative_path)
+    );
+    Ok(relative_path)
+}
+
+#[tauri::command]
 fn log_frontend_error(message: String) {
     error!("[FRONTEND] {}", logger::sanitize_string(&message));
 }
@@ -553,6 +581,29 @@ fn import_backup(state: State<AppState>, source_path: String) -> Result<usize, S
 }
 
 #[tauri::command]
+fn import_backup_detailed(state: State<AppState>, source_path: String) -> Result<ImportBackupResult, String> {
+    info!(
+        "Importing backup (detailed) from: {}",
+        logger::sanitize_string(&source_path)
+    );
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let result = core.import_backup_detailed(&source_path).map_err(|e| {
+        error!("Failed to import backup: {}", e);
+        e.to_string()
+    })?;
+
+    info!(
+        "Import completed: {} successful, {} failed out of {} total",
+        result.success_count,
+        result.failed_count,
+        result.total_count
+    );
+    Ok(result)
+}
+
+#[tauri::command]
 fn check_missing_assets(state: State<AppState>, json_path: String) -> Result<Vec<String>, String> {
     info!(
         "Checking for missing assets in: {}",
@@ -654,12 +705,14 @@ pub fn run() {
             get_app_version,
             get_members,
             update_member,
+            copy_avatar_to_import,
             log_frontend_error,
             log_frontend_warning,
             log_frontend_info,
             export_all_conversations,
             export_selected_conversations,
             import_backup,
+            import_backup_detailed,
             check_missing_assets,
             copy_assets_to_json_dir,
             check_for_update,

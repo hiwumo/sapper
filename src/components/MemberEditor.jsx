@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { X, Upload } from "lucide-react";
+import { X, Pencil } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useToast } from "./ToastContainer";
 import "./MemberEditor.css";
 
 function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate }) {
+  const toast = useToast();
   const [nickname, setNickname] = useState("");
   const [avatarPath, setAvatarPath] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -39,7 +41,7 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
       onClose();
     } catch (error) {
       console.error("Failed to update member:", error);
-      alert(`Failed to update member: ${error}`);
+      toast.error(`Failed to update member: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -60,11 +62,22 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
       });
 
       if (selected) {
-        setAvatarPath(selected);
+        // Copy the file to the import's attachments folder
+        try {
+          const relativePath = await invoke("copy_avatar_to_import", {
+            importId,
+            sourcePath: selected,
+          });
+          setAvatarPath(relativePath);
+          toast.success("Avatar updated successfully!");
+        } catch (copyError) {
+          console.error("Failed to copy avatar:", copyError);
+          toast.error(`Failed to copy avatar: ${copyError}`);
+        }
       }
     } catch (error) {
       console.error("Failed to select avatar:", error);
-      alert(`Failed to select avatar: ${error}`);
+      toast.error(`Failed to select avatar: ${error}`);
     }
   };
 
@@ -87,11 +100,19 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
 
         <div className="member-editor-content">
           <div className="member-preview">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={nickname} className="member-avatar-large" />
-            ) : (
-              <div className="member-avatar-placeholder">No Avatar</div>
-            )}
+            <div className="avatar-edit-container" onClick={handleSelectAvatar}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={nickname} className="member-avatar-large" />
+              ) : (
+                <div className="member-avatar-placeholder">No Avatar</div>
+              )}
+              <div className="avatar-edit-overlay">
+                <Pencil size={32} className="avatar-edit-icon" />
+              </div>
+            </div>
+            <span className="field-description" style={{ textAlign: "center", marginTop: "0.5rem" }}>
+              Click avatar to change
+            </span>
           </div>
 
           <div className="member-field">
@@ -114,45 +135,11 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
             </span>
           </div>
 
-          <div className="member-field">
-            <label>Avatar Path</label>
-            <div className="avatar-input-group">
-              <input
-                type="text"
-                value={avatarPath}
-                onChange={(e) => setAvatarPath(e.target.value)}
-                className="member-input"
-                placeholder="Path to avatar image"
-              />
-              <button className="avatar-browse-button" onClick={handleSelectAvatar}>
-                <Upload size={18} />
-                Browse
-              </button>
-            </div>
-            <span className="field-description">
-              Select a custom avatar image for this user
-            </span>
-          </div>
-
           {member.isBot && (
             <div className="member-badge">
               <span className="bot-badge">BOT</span>
             </div>
           )}
-
-          <div className="member-info">
-            {member.color && (
-              <p>
-                <strong>Role Color:</strong>{" "}
-                <span
-                  className="color-preview"
-                  style={{ backgroundColor: member.color }}
-                >
-                  {member.color}
-                </span>
-              </p>
-            )}
-          </div>
         </div>
 
         <div className="member-editor-footer">

@@ -1,8 +1,8 @@
-import { confirm } from '@tauri-apps/plugin-dialog';
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import FormInput from "./FormInput";
 import InfoSection from "./InfoSection";
+import Dialog from "./Dialog";
 import "./EditDialog.css";
 
 function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
@@ -14,6 +14,7 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
   };
 
   const [alias, setAlias] = useState(importEntry?.alias || "");
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
     if (importEntry) {
@@ -30,15 +31,13 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
     onSave({ ...importEntry, alias: alias.trim() || defaultName });
   };
 
-  const handleUnimport = async () => {
-    const confirmation = await confirm(
-      'Are you sure you want to unimport this conversation?',
-      { title: 'Unimport Conversation', kind: 'warning' }
-    );
-    if (confirmation) {
-      onUnimport(importEntry.id);
-      onClose();
-    }
+  const handleUnimport = () => {
+    setConfirmDialogOpen(true);
+  };
+
+  const confirmUnimport = () => {
+    onUnimport(importEntry.id);
+    onClose();
   };
 
   const infoRows = [
@@ -49,7 +48,7 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="dialog-content" onClick={(e) => e.stopPropagation()}>
+      <div className="edit-dialog-content" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
           <h2>Edit Conversation</h2>
           <button className="dialog-close" onClick={onClose}>
@@ -90,6 +89,17 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
           </div>
         </form>
       </div>
+
+      <Dialog
+        isOpen={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+        title="Unimport Conversation"
+        message="Are you sure you want to unimport this conversation? The original folder you imported from will remain, but our copy will be permanently erased."
+        confirmText="Unimport"
+        cancelText="Cancel"
+        onConfirm={confirmUnimport}
+        type="danger"
+      />
     </div>
   );
 }

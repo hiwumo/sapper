@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, FolderOpen, X } from "lucide-react";
+import { useToast } from "./ToastContainer";
 import "./MissingAssetsDialog.css";
 
 function MissingAssetsDialog({
@@ -12,6 +13,7 @@ function MissingAssetsDialog({
   onContinue,
   onCancel,
 }) {
+  const toast = useToast();
   const [isCopyingAssets, setIsCopyingAssets] = useState(false);
   const [copyProgress, setCopyProgress] = useState({ current: 0, total: 0, filename: "" });
 
@@ -63,7 +65,7 @@ function MissingAssetsDialog({
       onContinue();
     } catch (error) {
       console.error("Failed to copy assets:", error);
-      alert(`Failed to copy assets: ${error}`);
+      toast.error(`Failed to copy assets: ${error}`);
       setIsCopyingAssets(false);
       setCopyProgress({ current: 0, total: 0, filename: "" });
     }

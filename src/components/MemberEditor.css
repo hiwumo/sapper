@@ -66,8 +66,27 @@
 
 .member-preview {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 1.5rem;
+}
+
+.avatar-edit-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.avatar-edit-container:hover .member-avatar-large,
+.avatar-edit-container:hover .member-avatar-placeholder {
+  filter: brightness(0.6);
+}
+
+.avatar-edit-container:hover .avatar-edit-overlay {
+  opacity: 1;
 }
 
 .member-avatar-large {
@@ -76,6 +95,7 @@
   border-radius: 50%;
   object-fit: cover;
   border: 3px solid #333333;
+  transition: filter 0.2s ease;
 }
 
 .member-avatar-placeholder {
@@ -89,6 +109,27 @@
   color: #666666;
   font-size: 0.9rem;
   border: 3px solid #333333;
+  transition: filter 0.2s ease;
+}
+
+.avatar-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.avatar-edit-icon {
+  color: #ffffff;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 .member-field {
@@ -132,36 +173,6 @@
   margin-top: 0.5rem;
   font-size: 0.85rem;
   color: #888888;
-}
-
-.avatar-input-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.avatar-input-group .member-input {
-  flex: 1;
-}
-
-.avatar-browse-button {
-  padding: 0.75rem 1rem;
-  background: #2a2a2a;
-  border: 1px solid #333333;
-  border-radius: 6px;
-  color: #cccccc;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  white-space: nowrap;
-  transition: all 0.15s;
-}
-
-.avatar-browse-button:hover {
-  background: #333333;
-  border-color: #4a9eff;
-  color: #f0f0f0;
 }
 
 .member-badge {

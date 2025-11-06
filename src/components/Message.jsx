@@ -19,8 +19,33 @@ function isMediaUrl(url) {
   return mediaExtensions.test(url);
 }
 
+function isImageUrl(url) {
+  const imageExtensions = /\.(jpg|jpeg|png|gif|webp|apng)(\?.*)?$/i;
+  return imageExtensions.test(url);
+}
+
 function isGifUrl(url) {
   return /\.(gif)(\?.*)?$/i.test(url);
+}
+
+/**
+ * Check if message content is ONLY a direct image/gif URL (with optional whitespace)
+ */
+function isOnlyImageUrl(content) {
+  if (!content || typeof content !== 'string') return null;
+
+  const trimmed = content.trim();
+  const urlRegex = /^(https?:\/\/[^\s]+)$/;
+  const match = trimmed.match(urlRegex);
+
+  if (match) {
+    const url = match[1];
+    if (isImageUrl(url)) {
+      return url;
+    }
+  }
+
+  return null;
 }
 
 function parseMarkdown(text) {
@@ -245,6 +270,10 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     );
   }
 
+  // Check if message content is ONLY a direct image/gif URL
+  const onlyImageUrl = isOnlyImageUrl(message.content);
+  const shouldHideContent = onlyImageUrl !== null;
+
   return (
     <>
     <MessageReply
@@ -272,7 +301,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
             </span>
           </div>
         )}
-        {message.content && message.content.length > 0 && (
+        {message.content && message.content.length > 0 && !shouldHideContent && (
           <div className="message-text">{processContent(message, importPath, convertFileSrc)}</div>
         )}
         <MessageStickers
@@ -283,6 +312,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         <MessageAttachments
           mediaRefs={message.mediaRefs}
           onImageClick={onImageClick}
+          directImageUrl={onlyImageUrl}
         />
         <MessageEmbeds
           embeds={message.embeds}

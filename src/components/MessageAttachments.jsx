@@ -3,11 +3,11 @@ import { useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { Download, ChevronLeft, ChevronRight, X } from "lucide-react";
 
-function MessageAttachments({ mediaRefs, onImageClick }) {
+function MessageAttachments({ mediaRefs, onImageClick, directImageUrl }) {
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
 
-  if (!mediaRefs || mediaRefs.length === 0) return null;
+  if ((!mediaRefs || mediaRefs.length === 0) && !directImageUrl) return null;
 
   function getAttachmentUrl(filePath) {
     if (!filePath) return "";
@@ -28,17 +28,25 @@ function MessageAttachments({ mediaRefs, onImageClick }) {
   const images = [];
   const otherAttachments = [];
 
-  mediaRefs.forEach((ref, idx) => {
-    const fileName = ref.split("\\").pop().split("/").pop();
-    const isSticker = ref.toLowerCase().includes("sticker");
-    const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp|apng)$/i);
+  // Add directImageUrl if provided (message was only an image URL)
+  if (directImageUrl) {
+    const fileName = directImageUrl.split("/").pop().split("?")[0]; // Extract filename from URL
+    images.push({ ref: directImageUrl, fileName, idx: -1, isDirect: true });
+  }
 
-    if (!isSticker && isImage) {
-      images.push({ ref, fileName, idx });
-    } else {
-      otherAttachments.push({ ref, fileName, idx, isSticker, isImage });
-    }
-  });
+  if (mediaRefs) {
+    mediaRefs.forEach((ref, idx) => {
+      const fileName = ref.split("\\").pop().split("/").pop();
+      const isSticker = ref.toLowerCase().includes("sticker");
+      const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp|apng)$/i);
+
+      if (!isSticker && isImage) {
+        images.push({ ref, fileName, idx, isDirect: false });
+      } else {
+        otherAttachments.push({ ref, fileName, idx, isSticker, isImage });
+      }
+    });
+  }
 
   const openCarousel = (index) => {
     setCarouselIndex(index);
@@ -70,7 +78,7 @@ function MessageAttachments({ mediaRefs, onImageClick }) {
                 onClick={() => openCarousel(idx)}
               >
                 <img
-                  src={getAttachmentUrl(img.ref)}
+                  src={img.isDirect ? img.ref : getAttachmentUrl(img.ref)}
                   alt={img.fileName}
                   loading="lazy"
                 />
@@ -155,7 +163,7 @@ function MessageAttachments({ mediaRefs, onImageClick }) {
 
             <div className="carousel-image-container">
               <img
-                src={getAttachmentUrl(images[carouselIndex].ref)}
+                src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
                 alt={images[carouselIndex].fileName}
               />
             </div>

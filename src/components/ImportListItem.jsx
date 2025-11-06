@@ -1,13 +1,14 @@
 import { ExternalLink, MoreVertical } from "lucide-react";
 import { useState } from "react";
-import { confirm } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import DropdownMenu from "./DropdownMenu";
+import Dialog from "./Dialog";
 import "./ImportListItem.css";
 
 function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
   const [showMenu, setShowMenu] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
   const getDefaultName = (imp) => {
     if (imp.guildName === "Direct Messages") {
@@ -39,15 +40,13 @@ function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   };
 
-  const handleUnimport = async () => {
+  const handleUnimport = () => {
     setShowMenu(false);
-    const confirmation = await confirm(
-      'Are you sure you want to unimport this conversation?',
-      { title: 'Unimport Conversation', kind: 'warning' }
-    );
-    if (confirmation) {
-      onUnimport(importEntry.id);
-    }
+    setConfirmDialogOpen(true);
+  };
+
+  const confirmUnimport = () => {
+    onUnimport(importEntry.id);
   };
 
   const menuItems = [
@@ -125,6 +124,17 @@ function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
           )}
         </div>
       </div>
+
+      <Dialog
+        isOpen={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+        title="Unimport Conversation"
+        message="Are you sure you want to unimport this conversation? The original folder you imported from will remain, but our copy will be permanently erased."
+        confirmText="Unimport"
+        cancelText="Cancel"
+        onConfirm={confirmUnimport}
+        type="danger"
+      />
     </div>
   );
 }

@@ -4,13 +4,15 @@ import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useToast } from "./ToastContainer";
 import "./Settings.css";
 
 function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImportComplete }) {
+  const toast = useToast();
   const [exportMode, setExportMode] = useState("all");
   const [selectedConversations, setSelectedConversations] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
+  const [importQueue, setImportQueue] = useState([]);
   const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
@@ -41,7 +43,7 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
       await openPath(logDir);
     } catch (error) {
       console.error("Failed to open log directory:", error);
-      alert(`Failed to open log directory: ${error}`);
+      toast.error(`Failed to open log directory: ${error}`);
     }
   };
 
@@ -76,10 +78,10 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
       if (exportMode === "all") {
         await invoke("export_all_conversations", { destPath: selected });
-        alert("All conversations exported successfully!");
+        toast.success("All conversations exported successfully!");
       } else {
         if (selectedConversations.length === 0) {
-          alert("Please select at least one conversation to export");
+          toast.warning("Please select at least one conversation to export");
           setIsExporting(false);
           return;
         }
@@ -87,13 +89,13 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
           destPath: selected,
           importIds: selectedConversations,
         });
-        alert(`${selectedConversations.length} conversation(s) exported successfully!`);
+        toast.success(`${selectedConversations.length} conversation(s) exported successfully!`);
       }
 
       setIsExporting(false);
     } catch (error) {
       console.error("Export failed:", error);
-      alert(`Export failed: ${error}`);
+      toast.error(`Export failed: ${error}`);
       setIsExporting(false);
     }
   };
@@ -109,22 +111,72 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
       if (!selected) return;
 
-      setIsImporting(true);
+      // Add to queue immediately - user can queue multiple imports
+      const importId = Date.now();
+      setImportQueue((prev) => [...prev, { id: importId, path: selected, status: "pending" }]);
 
-      const importedCount = await invoke("import_backup", { sourcePath: selected });
+      // Show initial toast
+      toast.info("Import started in background...", 3000);
 
-      alert(`Successfully imported ${importedCount} new conversation(s)!`);
-
-      // Notify parent to reload imports
-      if (onImportComplete) {
-        onImportComplete();
-      }
-
-      setIsImporting(false);
+      // Process import asynchronously
+      processImport(importId, selected);
     } catch (error) {
       console.error("Import failed:", error);
-      alert(`Import failed: ${error}`);
-      setIsImporting(false);
+      toast.error(`Import failed: ${error}`);
+    }
+  };
+
+  const processImport = async (importId, sourcePath) => {
+    try {
+      // Update status to processing
+      setImportQueue((prev) =>
+        prev.map((item) =>
+          item.id === importId ? { ...item, status: "processing" } : item
+        )
+      );
+
+      // Call the detailed import command
+      const result = await invoke("import_backup_detailed", { sourcePath });
+
+      // Remove from queue
+      setImportQueue((prev) => prev.filter((item) => item.id !== importId));
+
+      // Show detailed results
+      if (result.successCount > 0) {
+        toast.success(
+          `Successfully imported ${result.successCount} conversation(s)!`,
+          6000
+        );
+      }
+
+      if (result.failedCount > 0) {
+        // Show error summary
+        const errorSummary = result.failed
+          .slice(0, 3)
+          .map((f) => `${f.conversationName}: ${f.error}`)
+          .join("\n");
+        const moreErrors = result.failed.length > 3 ? `\n...and ${result.failed.length - 3} more` : "";
+
+        toast.error(
+          `Failed to import ${result.failedCount} conversation(s):\n${errorSummary}${moreErrors}`,
+          10000
+        );
+      }
+
+      if (result.successCount === 0 && result.failedCount === 0) {
+        toast.info("No new conversations to import (all already exist)");
+      }
+
+      // Notify parent to reload imports
+      if (onImportComplete && result.successCount > 0) {
+        onImportComplete();
+      }
+    } catch (error) {
+      console.error("Import failed:", error);
+      toast.error(`Import failed: ${error}`, 8000);
+
+      // Remove from queue
+      setImportQueue((prev) => prev.filter((item) => item.id !== importId));
     }
   };
 
@@ -249,16 +301,21 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
           <div className="settings-section">
             <h3>Import Conversations</h3>
             <p className="settings-description">
-              Restore conversations from a backup
+              Restore conversations from a backup. You can queue multiple imports at once.
             </p>
+
+            {importQueue.length > 0 && (
+              <div className="import-queue-status">
+                {importQueue.length} import(s) in progress...
+              </div>
+            )}
 
             <button
               className="import-button"
               onClick={handleImport}
-              disabled={isImporting}
             >
               <Upload size={20} />
-              {isImporting ? "Importing..." : "Import Backup"}
+              Import Backup
             </button>
           </div>
 

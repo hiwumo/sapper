@@ -4,6 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { Hash, AtSign, Search, FolderOpen, ArrowDown } from "lucide-react";
 import { themes } from "../themes";
+import { useToast } from "./ToastContainer";
 import Message from "./Message";
 import MessageAvatar from "./MessageAvatar";
 import MemberEditor from "./MemberEditor";
@@ -13,6 +14,7 @@ const MESSAGES_PER_PAGE = 50;
 const SEARCH_RESULTS_PER_PAGE = 10;
 
 function ConversationViewer({ importId, theme }) {
+  const toast = useToast();
   const themeColors = themes[theme]?.colors || themes.dark.colors;
   const [messages, _setMessages] = useState([]);
   const [totalMessages, setTotalMessages] = useState(0);
@@ -227,7 +229,7 @@ function ConversationViewer({ importId, theme }) {
       await openPath(logDir);
     } catch (error) {
       console.error("Failed to open log directory:", error);
-      alert(`Failed to open log directory: ${error}`);
+      toast.error(`Failed to open log directory: ${error}`);
     }
   };
 
@@ -335,7 +337,7 @@ function ConversationViewer({ importId, theme }) {
       setSearchPage(0);
     } catch (err) {
       console.error("Search failed:", err);
-      alert(`Search failed: ${err}`);
+      toast.error(`Search failed: ${err}`);
     } finally {
       setIsSearching(false);
     }

@@ -43,29 +43,56 @@ cd sapper
 
 2. Install dependencies
 ```bash
-npm install
+make install
+# or: npm install
 ```
 
 3. Run in development mode
 ```bash
-npm run tauri dev
+make dev
+# or: npm run tauri dev
 ```
 
 4. Build for production
-```bash
-npm run tauri build
-```
 
-The compiled application will be in `src-tauri/target/release/`.
+**Option A: Unsigned build (for testing)**
+```bash
+make build-unsigned
+```
+This creates a quick unsigned build in `src-tauri/target/release/bundle/`. Unsigned builds do NOT support auto-updates.
+
+**Option B: Signed build (for distribution)**
+```bash
+make build-signed
+```
+This creates a signed build with auto-update support. Requires signing key setup (see below).
+
+The compiled application will be in `src-tauri/target/release/bundle/nsis/`.
 
 ### Creating Releases
 
 For detailed release instructions, see [RELEASE.md](RELEASE.md).
 
-Quick start:
-1. Update version in `src-tauri/tauri.conf.json`
-2. Ensure `.env` has your signing key (see `.env.example`)
-3. Run `make release-github` for a fully automated release
+**Prerequisites:**
+1. Copy `.env.example` to `.env`
+2. Add your Tauri signing key to `.env` (see [RELEASE.md](RELEASE.md) for key generation)
+
+**Quick release commands:**
+
+```bash
+# Build signed app and update manifest
+make release
+
+# Build, update manifest, AND create GitHub release (requires gh CLI)
+make release-full
+```
+
+**Other useful commands:**
+```bash
+make help          # Show all available commands
+make check-env     # Verify your environment is set up correctly
+make clean         # Remove build artifacts
+```
 
 The app includes automatic update functionality - users will be notified when new versions are available.
 

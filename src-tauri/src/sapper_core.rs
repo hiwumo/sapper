@@ -442,6 +442,56 @@ impl SapperCore {
         }
     }
 
+    /// Copy an avatar file into the import's attachments folder
+    pub fn copy_avatar_to_import(&self, import_id: &str, source_path: &str) -> io::Result<String> {
+        let metadata = self.load_metadata()?;
+        let import_entry = metadata
+            .imports
+            .iter()
+            .find(|e| e.id == import_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
+
+        let import_dir = PathBuf::from(&import_entry.import_path);
+        let attachments_dir = import_dir.join("attachments");
+
+        // Create attachments directory if it doesn't exist
+        fs::create_dir_all(&attachments_dir)?;
+
+        // Get the source file name and extension
+        let source = PathBuf::from(source_path);
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid file path"))?;
+
+        // Generate a unique filename to avoid conflicts
+        let dest_path = attachments_dir.join(file_name);
+        let final_dest_path = if dest_path.exists() {
+            // If file exists, append a timestamp to make it unique
+            let stem = source.file_stem().unwrap_or_default().to_string_lossy();
+            let ext = source.extension().unwrap_or_default().to_string_lossy();
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let unique_name = format!("{}_{}.{}", stem, timestamp, ext);
+            attachments_dir.join(unique_name)
+        } else {
+            dest_path
+        };
+
+        // Copy the file
+        fs::copy(source_path, &final_dest_path)?;
+
+        // Return just the filename (relative path)
+        let relative_filename = final_dest_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        Ok(relative_filename)
+    }
+
     fn extract_avatar(
         &self,
         export: &DiscordExport,
@@ -629,6 +679,113 @@ impl SapperCore {
             // Could be enhanced later to merge specific fields
         }
 
+        Ok(())
+    }
+
+    /// Import backup with detailed results (merge with existing data)
+    pub fn import_backup_detailed(&self, source_path: &str) -> io::Result<crate::models::ImportBackupResult> {
+        use crate::models::{ImportBackupResult, ImportedConversation, FailedImport};
+
+        let source = PathBuf::from(source_path);
+
+        // Validate backup structure
+        if !source.join("metadata.json").exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid backup: missing metadata.json",
+            ));
+        }
+
+        // Load source metadata
+        let source_metadata_contents = fs::read_to_string(source.join("metadata.json"))?;
+        let source_metadata: ImportMetadata = serde_json::from_str(&source_metadata_contents)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        // Load current metadata
+        let mut current_metadata = self.load_metadata()?;
+
+        // Merge imports (avoid duplicates by file_hash)
+        let existing_hashes: std::collections::HashSet<String> = current_metadata
+            .imports
+            .iter()
+            .map(|e| e.file_hash.clone())
+            .collect();
+
+        let mut successful = Vec::new();
+        let mut failed = Vec::new();
+        let total_count = source_metadata.imports.len();
+
+        for source_entry in source_metadata.imports {
+            let conversation_name = format!("{} in {}", source_entry.channel_name, source_entry.guild_name);
+
+            // Skip if already exists (same file hash)
+            if existing_hashes.contains(&source_entry.file_hash) {
+                failed.push(FailedImport {
+                    conversation_name,
+                    error: "Conversation already imported (duplicate)".to_string(),
+                });
+                continue;
+            }
+
+            // Try to import this conversation
+            match self.import_single_conversation(&source, &mut current_metadata, &source_entry) {
+                Ok(_) => {
+                    successful.push(ImportedConversation {
+                        conversation_name,
+                        message_count: source_entry.message_count,
+                    });
+                }
+                Err(e) => {
+                    failed.push(FailedImport {
+                        conversation_name,
+                        error: e.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Save merged metadata
+        self.save_metadata(&current_metadata)?;
+
+        Ok(ImportBackupResult {
+            successful: successful.clone(),
+            failed: failed.clone(),
+            total_count,
+            success_count: successful.len(),
+            failed_count: failed.len(),
+        })
+    }
+
+    /// Import a single conversation from backup
+    fn import_single_conversation(
+        &self,
+        source: &Path,
+        current_metadata: &mut ImportMetadata,
+        source_entry: &ImportEntry,
+    ) -> io::Result<()> {
+        // Generate new ID to avoid conflicts
+        let new_id = Uuid::new_v4().to_string();
+        let source_import_dir = source.join("imports").join(&source_entry.id);
+        let dest_import_dir = self.sapper_dir.join("imports").join(&new_id);
+
+        // Copy import directory
+        if source_import_dir.exists() {
+            self.copy_directory(&source_import_dir, &dest_import_dir)?;
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Import directory not found in backup",
+            ));
+        }
+
+        // Create new entry with new ID and path
+        let new_entry = ImportEntry {
+            id: new_id.clone(),
+            import_path: dest_import_dir.to_string_lossy().to_string(),
+            ..source_entry.clone()
+        };
+
+        current_metadata.imports.push(new_entry);
         Ok(())
     }
 
