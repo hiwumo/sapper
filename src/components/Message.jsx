@@ -3,6 +3,7 @@ import MessageReply from "./MessageReply";
 import MessageStickers from "./MessageStickers";
 import MessageAttachments from "./MessageAttachments";
 import MessageEmbeds from "./MessageEmbeds";
+import TenorEmbed from "./TenorEmbed";
 
 /**
  * Build a usable URL for an emoji image reported in message.inlineEmojis.
@@ -29,6 +30,22 @@ function isGifUrl(url) {
 }
 
 /**
+ * Check if URL is a Tenor GIF link and extract the GIF ID
+ */
+function extractTenorGifId(url) {
+  if (!url || typeof url !== 'string') return null;
+
+  const tenorRegex = /^https?:\/\/(www\.)?tenor\.com\/view\/[^\/]+-(\d+)$/;
+  const match = url.match(tenorRegex);
+
+  if (match) {
+    return match[2]; // The GIF ID
+  }
+
+  return null;
+}
+
+/**
  * Check if message content is ONLY a direct image/gif URL (with optional whitespace)
  */
 function isOnlyImageUrl(content) {
@@ -42,6 +59,27 @@ function isOnlyImageUrl(content) {
     const url = match[1];
     if (isImageUrl(url)) {
       return url;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if message content is ONLY a Tenor GIF URL
+ */
+function isOnlyTenorUrl(content) {
+  if (!content || typeof content !== 'string') return null;
+
+  const trimmed = content.trim();
+  const urlRegex = /^(https?:\/\/[^\s]+)$/;
+  const match = trimmed.match(urlRegex);
+
+  if (match) {
+    const url = match[1];
+    const gifId = extractTenorGifId(url);
+    if (gifId) {
+      return { url, gifId };
     }
   }
 
@@ -270,9 +308,10 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     );
   }
 
-  // Check if message content is ONLY a direct image/gif URL
+  // Check if message content is ONLY a direct image/gif URL or Tenor URL
   const onlyImageUrl = isOnlyImageUrl(message.content);
-  const shouldHideContent = onlyImageUrl !== null;
+  const onlyTenorUrl = isOnlyTenorUrl(message.content);
+  const shouldHideContent = onlyImageUrl !== null || onlyTenorUrl !== null;
 
   return (
     <>
@@ -304,6 +343,9 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         {message.content && message.content.length > 0 && !shouldHideContent && (
           <div className="message-text">{processContent(message, importPath, convertFileSrc)}</div>
         )}
+        {onlyTenorUrl && (
+          <TenorEmbed gifId={onlyTenorUrl.gifId} url={onlyTenorUrl.url} />
+        )}
         <MessageStickers
           stickers={message.stickers}
           importPath={importPath}
@@ -314,10 +356,12 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           onImageClick={onImageClick}
           directImageUrl={onlyImageUrl}
         />
-        <MessageEmbeds
-          embeds={message.embeds}
-          importPath={importPath}
-        />
+        {!onlyTenorUrl && (
+          <MessageEmbeds
+            embeds={message.embeds}
+            importPath={importPath}
+          />
+        )}
       </div>
     </div>
     </>
