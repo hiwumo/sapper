@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Hash, AtSign, Search, FolderOpen, ArrowDown } from "lucide-react";
+import { Hash, AtSign, Search, FolderOpen, ArrowDown, Filter, X } from "lucide-react";
 import { themes } from "../themes";
 import { useToast } from "./ToastContainer";
 import Message from "./Message";
@@ -32,6 +32,11 @@ function ConversationViewer({ importId, theme }) {
   const [searchPage, setSearchPage] = useState(0);
   const [memberEditorOpen, setMemberEditorOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [afterDate, setAfterDate] = useState("");
+  const [beforeDate, setBeforeDate] = useState("");
+  const [afterTimestamp, setAfterTimestamp] = useState(null);
+  const [beforeTimestamp, setBeforeTimestamp] = useState(null);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -316,6 +321,8 @@ function ConversationViewer({ importId, theme }) {
         importId,
         query: searchQuery,
         limit: 100,
+        afterTimestamp,
+        beforeTimestamp,
       });
 
       console.log("Search returned message IDs:", messageIds);
@@ -376,6 +383,53 @@ function ConversationViewer({ importId, theme }) {
     setSearchResults([]);
     setSearchActive(false);
     setIsSearching(false);
+  }
+
+  function applyDateFilter() {
+    // Convert date strings to timestamps (milliseconds)
+    const after = afterDate ? new Date(afterDate).getTime() : null;
+    const before = beforeDate ? new Date(beforeDate + "T23:59:59").getTime() : null;
+
+    setAfterTimestamp(after);
+    setBeforeTimestamp(before);
+    setShowDateFilter(false);
+
+    // Trigger search if there's a query
+    if (searchQuery.trim()) {
+      handleSearch();
+    }
+  }
+
+  function clearDateFilter() {
+    setAfterDate("");
+    setBeforeDate("");
+    setAfterTimestamp(null);
+    setBeforeTimestamp(null);
+
+    // Re-trigger search if active
+    if (searchQuery.trim() && searchActive) {
+      handleSearch();
+    }
+  }
+
+  function getDateFilterText() {
+    if (!afterTimestamp && !beforeTimestamp) return null;
+
+    const formatDate = (timestamp) => {
+      return new Date(timestamp).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    };
+
+    if (afterTimestamp && beforeTimestamp) {
+      return `between ${formatDate(afterTimestamp)} and ${formatDate(beforeTimestamp)}`;
+    } else if (afterTimestamp) {
+      return `after ${formatDate(afterTimestamp)}`;
+    } else {
+      return `before ${formatDate(beforeTimestamp)}`;
+    }
   }
 
   function getChannelAvatarUrl() {
@@ -558,19 +612,41 @@ function ConversationViewer({ importId, theme }) {
           )}
         </div>
         <div className="header-search">
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSearch();
-              }
-            }}
-            className="search-input"
-          />
+          <div className="search-input-container">
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSearch();
+                }
+              }}
+              className="search-input"
+            />
+            {getDateFilterText() && (
+              <div className="search-filter-badge">
+                <span className="filter-text">{getDateFilterText()}</span>
+                <button
+                  className="filter-clear-btn"
+                  onClick={clearDateFilter}
+                  title="Clear date filter"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setShowDateFilter(!showDateFilter)}
+            className={`filter-icon-button ${(afterTimestamp || beforeTimestamp) ? 'active' : ''}`}
+            type="button"
+            title="Date filter"
+          >
+            <Filter size={16} />
+          </button>
           <button
             onClick={searchActive ? clearSearch : handleSearch}
             className="search-icon-button"
@@ -582,6 +658,59 @@ function ConversationViewer({ importId, theme }) {
               <Search size={16} className="search-icon" />
             )}
           </button>
+
+          {/* Date Filter Dropdown */}
+          {showDateFilter && (
+            <div className="date-filter-dropdown">
+              <div className="date-filter-header">
+                <span>Filter by Date</span>
+                <button
+                  className="date-filter-close"
+                  onClick={() => setShowDateFilter(false)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="date-filter-body">
+                <div className="date-filter-field">
+                  <label>After</label>
+                  <input
+                    type="date"
+                    value={afterDate}
+                    onChange={(e) => setAfterDate(e.target.value)}
+                    max={beforeDate || undefined}
+                  />
+                </div>
+                <div className="date-filter-field">
+                  <label>Before</label>
+                  <input
+                    type="date"
+                    value={beforeDate}
+                    onChange={(e) => setBeforeDate(e.target.value)}
+                    min={afterDate || undefined}
+                  />
+                </div>
+              </div>
+              <div className="date-filter-actions">
+                <button
+                  className="date-filter-clear-btn"
+                  onClick={() => {
+                    setAfterDate("");
+                    setBeforeDate("");
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  className="date-filter-apply-btn"
+                  onClick={applyDateFilter}
+                  disabled={!afterDate && !beforeDate}
+                >
+                  Apply Filter
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

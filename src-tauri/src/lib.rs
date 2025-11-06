@@ -236,14 +236,18 @@ fn search_messages(
     import_id: String,
     query: String,
     limit: usize,
+    after_timestamp: Option<u64>,
+    before_timestamp: Option<u64>,
 ) -> Result<Vec<u64>, String> {
     use std::path::PathBuf;
 
     info!(
-        "Searching messages in {} with query (sanitized): {} (limit: {})",
+        "Searching messages in {} with query (sanitized): {} (limit: {}, after: {:?}, before: {:?})",
         logger::sanitize_string(&import_id),
         logger::sanitize_string(&query),
-        limit
+        limit,
+        after_timestamp,
+        before_timestamp
     );
 
     let core_lock = state.core.lock().unwrap();
@@ -270,7 +274,7 @@ fn search_messages(
         e.to_string()
     })?;
 
-    let result = search_index.search(&query, limit).map_err(|e| {
+    let result = search_index.search(&query, limit, after_timestamp, before_timestamp).map_err(|e| {
         error!("Search failed: {}", e);
         e.to_string()
     })?;
