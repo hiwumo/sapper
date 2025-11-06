@@ -1,9 +1,11 @@
+mod discord_presence;
 mod logger;
 mod message_storage;
 mod models;
 mod sapper_core;
 mod search;
 
+use discord_presence::DiscordPresence;
 use message_storage::StoredMessage;
 use models::*;
 use sapper_core::SapperCore;
@@ -16,6 +18,7 @@ use tracing::{debug, error, info, warn};
 struct AppState {
     core: Mutex<Option<SapperCore>>,
     log_dir: PathBuf,
+    discord: DiscordPresence,
 }
 
 #[tauri::command]
@@ -676,6 +679,10 @@ pub fn run() {
     info!("Sapper application starting");
     info!("Log directory: {}", log_dir.display());
 
+    // Initialize Discord Rich Presence
+    let discord = DiscordPresence::new();
+    discord.connect();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -684,6 +691,7 @@ pub fn run() {
         .manage(AppState {
             core: Mutex::new(None),
             log_dir,
+            discord,
         })
         .invoke_handler(tauri::generate_handler![
             init_sapper,
