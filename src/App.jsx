@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { ToastContainer as ReactToastifyContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
 import Navbar from "./components/Navbar";
 import Home from "./components/Home";
@@ -8,7 +10,7 @@ import ConversationViewer from "./components/ConversationViewer";
 import ProgressDialog from "./components/ProgressDialog";
 import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
-import UpdateNotification from "./components/UpdateNotification";
+import Changelog from "./components/Changelog";
 import { ToastProvider, useToast } from "./components/ToastContainer";
 import { getSavedTheme } from "./themes";
 
@@ -26,6 +28,10 @@ function AppContent() {
     missingAssets: [],
     jsonPath: null,
   });
+  const [incompatibleImports, setIncompatibleImports] = useState([]);
+  const [updating, setUpdating] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState(null);
 
   useEffect(() => {
     initApp();
@@ -73,6 +79,7 @@ function AppContent() {
     try {
       await invoke("init_sapper");
       await loadImports();
+      await checkChangelog();
     } catch (error) {
       console.error("Failed to initialize:", error);
     } finally {
@@ -80,11 +87,49 @@ function AppContent() {
     }
   }
 
+  async function checkChangelog() {
+    try {
+      const version = await invoke("get_app_version");
+      setCurrentVersion(version);
+
+      const config = await invoke("get_config");
+      const lastChangelogVersion = config.lastChangelogVersion;
+
+      // Show changelog if version is different from last shown
+      if (!lastChangelogVersion || lastChangelogVersion !== version) {
+        setShowChangelog(true);
+      }
+    } catch (error) {
+      console.error("Failed to check changelog:", error);
+    }
+  }
+
+  async function handleCloseChangelog() {
+    setShowChangelog(false);
+
+    try {
+      const config = await invoke("get_config");
+      config.lastChangelogVersion = currentVersion;
+      await invoke("update_config", { config });
+    } catch (error) {
+      console.error("Failed to update changelog version:", error);
+    }
+  }
+
   async function loadImports() {
     try {
-      const importsList = await invoke("get_imports");
-      console.log("imports list:", importsList);
+      const importsList = await invoke("get_imports_with_compatibility");
+      console.log("imports list with compatibility:", importsList);
       setImports(importsList);
+
+      // Check for incompatible imports
+      const incompatible = importsList.filter(
+        (imp) => !imp.compatibility.isCompatible && imp.compatibility.needsUpdate
+      );
+      if (incompatible.length > 0) {
+        console.log("incompatible:", incompatible);
+        setIncompatibleImports(incompatible);
+      }
     } catch (error) {
       console.error("Failed to load imports:", error);
     }
@@ -208,6 +253,40 @@ function AppContent() {
     }
   }
 
+  async function handleBatchUpdate() {
+    try {
+      setUpdating(true);
+
+      const importIds = incompatibleImports.map((imp) => imp.id);
+      console.log("Batch updating imports:", importIds);
+
+      const results = await invoke("batch_reimport_conversations", {
+        importIds,
+      });
+
+      console.log("Batch update results:", results);
+
+      // Count successes and failures
+      const successes = results.filter(([_, result]) => result.hasOwnProperty('Ok')).length;
+      const failures = results.filter(([_, result]) => !result.hasOwnProperty('Ok')).length;
+
+      if (successes > 0) {
+        toast.success(`Successfully updated ${successes} conversation(s)`);
+      }
+      if (failures > 0) {
+        toast.error(`Failed to update ${failures} conversation(s)`);
+      }
+
+      // Reload imports to get updated compatibility info
+      await loadImports();
+      setUpdating(false);
+    } catch (error) {
+      setUpdating(false);
+      console.error("Batch update failed:", error);
+      toast.error(`Batch update failed: ${error}`);
+    }
+  }
+
   if (loading) {
     return (
       <div className="app">
@@ -219,6 +298,7 @@ function AppContent() {
   return (
     <div className="app">
       {importing && <ProgressDialog message="Importing conversation..." />}
+      {updating && <ProgressDialog message="Updating conversations..." />}
 
       <MissingAssetsDialog
         isOpen={missingAssetsDialog.isOpen}
@@ -228,7 +308,11 @@ function AppContent() {
         onCancel={handleMissingAssetsCancel}
       />
 
-      <UpdateNotification />
+      <Changelog
+        isOpen={showChangelog}
+        onClose={handleCloseChangelog}
+        version={currentVersion}
+      />
 
       <Navbar
         activeView={activeView}
@@ -245,6 +329,8 @@ function AppContent() {
         onThemeChange={setTheme}
         imports={imports}
         onImportComplete={loadImports}
+        onShowChangelog={() => setShowChangelog(true)}
+        currentVersion={currentVersion}
       />
 
       <main className="content">
@@ -255,6 +341,8 @@ function AppContent() {
             onDeleteImport={deleteImport}
             onUpdateImport={updateImport}
             onImport={handleImport}
+            onBatchUpdate={handleBatchUpdate}
+            incompatibleCount={incompatibleImports.length}
           />
         ) : (
           <ConversationViewer
@@ -272,6 +360,14 @@ function App() {
   return (
     <ToastProvider>
       <AppContent />
+      <ReactToastifyContainer
+        theme="dark"
+        position="bottom-right"
+        style={{
+          '--toastify-color-dark': '#2b2d31',
+          '--toastify-text-color-dark': '#dbdee1',
+        }}
+      />
     </ToastProvider>
   );
 }

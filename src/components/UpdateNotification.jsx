@@ -34,6 +34,10 @@ function UpdateNotification() {
         closeOnClick: false,
         draggable: false,
         closeButton: true,
+        style: {
+          background: "#2b2d31",
+          color: "#dbdee1",
+        },
       }
     );
   };
@@ -43,6 +47,10 @@ function UpdateNotification() {
     toast.update(toastIdRef.current, {
       render: <InstallingContent />,
       closeButton: false,
+      style: {
+        background: "#2b2d31",
+        color: "#dbdee1",
+      },
     });
 
     try {
@@ -55,6 +63,10 @@ function UpdateNotification() {
           toast.update(toastIdRef.current, {
             render: <DownloadingContent percentage={percentage} />,
             closeButton: false,
+            style: {
+              background: "#2b2d31",
+              color: "#dbdee1",
+            },
           });
         }
       });
@@ -79,6 +91,10 @@ function UpdateNotification() {
         render: <ErrorContent error={err.toString()} />,
         type: "error",
         closeButton: true,
+        style: {
+          background: "#2b2d31",
+          color: "#dbdee1",
+        },
       });
     }
   };
@@ -91,10 +107,10 @@ function UpdateContent({ updateInfo, onInstall }) {
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       <div>
         <div style={{ fontWeight: 600, marginBottom: "4px", fontSize: "15px" }}>
-          🔄 Update Available
+          Update Available
         </div>
         <div style={{ fontSize: "13px", color: "rgba(255, 255, 255, 0.8)" }}>
-          Version {updateInfo.version} is now available
+          Version {updateInfo.version} is now available. <br/><br/>It's best to keep Sapper up to date for security and better features.
         </div>
         {updateInfo.body && (
           <div

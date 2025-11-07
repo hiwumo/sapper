@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, FolderOpen, Download, Upload } from "lucide-react";
+import { X, FolderOpen, Download, Upload, FileText } from "lucide-react";
 import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -7,7 +7,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ToastContainer";
 import "./Settings.css";
 
-function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImportComplete }) {
+function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImportComplete, onShowChangelog, currentVersion }) {
   const toast = useToast();
   const [exportMode, setExportMode] = useState("all");
   const [selectedConversations, setSelectedConversations] = useState([]);
@@ -194,8 +194,12 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
           <div className="settings-section app-info">
             <h3>Sapper</h3>
             <p className="settings-description version-info">
-              Version {appVersion || "loading..."}
+              Version {currentVersion || appVersion || "loading..."}
             </p>
+            <button className="changelog-button" onClick={() => { onShowChangelog(); onClose(); }}>
+              <FileText size={20} />
+              View Changelog
+            </button>
           </div>
 
           <div className="settings-section">

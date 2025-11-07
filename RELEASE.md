@@ -127,6 +127,8 @@ Also update `package.json`:
 }
 ```
 
+And `Cargo.toml`. Further, you should add a version linking in `src-tauri/src/versioning.rs`.
+
 **Tip:** Keep both version numbers in sync!
 
 ### Step 2: Build and Sign

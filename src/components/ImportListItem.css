@@ -110,3 +110,39 @@
 .menu-container {
   position: relative;
 }
+
+.import-item.incompatible {
+  border-color: #f23f42;
+  background: rgba(242, 63, 66, 0.05);
+}
+
+.import-item.incompatible:hover {
+  background: rgba(242, 63, 66, 0.08);
+}
+
+.incompatible-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  color: #f23f42;
+  vertical-align: middle;
+}
+
+.version-text {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.8rem;
+  opacity: 0.2;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.action-btn:disabled:hover {
+  background: transparent;
+  border-color: #3a3a3a;
+  color: #aaa;
+}

@@ -145,6 +145,27 @@ impl Default for MemberStorage {
     }
 }
 
+// New unified import data structure (replaces members.json)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportData {
+    pub import_version: String,
+    pub members: Vec<Member>,
+    pub created_at: String,
+    pub last_updated: String,
+}
+
+impl Default for ImportData {
+    fn default() -> Self {
+        Self {
+            import_version: "0.3.0".to_string(), // Current version
+            members: Vec::new(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            last_updated: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -152,6 +173,8 @@ pub struct AppConfig {
     pub last_opened_chat: Option<String>,
     #[serde(default)]
     pub conversation_positions: std::collections::HashMap<String, ConversationPosition>,
+    #[serde(default)]
+    pub last_changelog_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +189,7 @@ impl Default for AppConfig {
             theme: "dark".to_string(),
             last_opened_chat: None,
             conversation_positions: std::collections::HashMap::new(),
+            last_changelog_version: None,
         }
     }
 }
@@ -193,4 +217,29 @@ pub struct ImportedConversation {
 pub struct FailedImport {
     pub conversation_name: String,
     pub error: String,
+}
+
+// Version compatibility structures
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum CompatibilityStatus {
+    Compatible,
+    Incompatible,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionCompatibility {
+    pub is_compatible: bool,
+    pub current_version: String,
+    pub import_version: String,
+    pub needs_update: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportEntryWithCompatibility {
+    #[serde(flatten)]
+    pub entry: ImportEntry,
+    pub compatibility: VersionCompatibility,
 }

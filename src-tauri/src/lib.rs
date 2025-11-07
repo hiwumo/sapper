@@ -4,6 +4,7 @@ mod message_storage;
 mod models;
 mod sapper_core;
 mod search;
+mod versioning;
 
 use discord_presence::DiscordPresence;
 use message_storage::StoredMessage;
@@ -45,6 +46,45 @@ fn get_imports(state: State<AppState>) -> Result<Vec<ImportEntry>, String> {
     })?;
     info!("Retrieved {} imports", metadata.imports.len());
     Ok(metadata.imports)
+}
+
+#[tauri::command]
+fn get_imports_with_compatibility(state: State<AppState>) -> Result<Vec<ImportEntryWithCompatibility>, String> {
+    debug!("Getting imports list with compatibility info");
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| {
+        error!("Failed to load metadata: {}", e);
+        e.to_string()
+    })?;
+
+    let mut imports_with_compat = Vec::new();
+
+    for entry in metadata.imports {
+        // Try to load import_data to get version
+        let import_version = core
+            .load_import_data(&entry.id)
+            .ok()
+            .map(|data| data.import_version)
+            .unwrap_or_else(|| "0.1.0".to_string()); // Default to oldest version if not found
+
+        let (is_compatible, needs_update) =
+            versioning::check_compatibility(&import_version, versioning::CURRENT_VERSION);
+
+        imports_with_compat.push(ImportEntryWithCompatibility {
+            entry,
+            compatibility: VersionCompatibility {
+                is_compatible,
+                current_version: versioning::CURRENT_VERSION.to_string(),
+                import_version,
+                needs_update,
+            },
+        });
+    }
+
+    info!("Retrieved {} imports with compatibility info", imports_with_compat.len());
+    Ok(imports_with_compat)
 }
 
 #[tauri::command]
@@ -672,6 +712,55 @@ async fn copy_assets_to_json_dir(
     Ok(result)
 }
 
+#[tauri::command]
+fn reimport_conversation(state: State<AppState>, import_id: String) -> Result<(), String> {
+    info!(
+        "Reimporting conversation with ID: {}",
+        logger::sanitize_string(&import_id)
+    );
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    core.reimport_conversation(&import_id).map_err(|e| {
+        error!(
+            "Failed to reimport conversation {}: {}",
+            logger::sanitize_string(&import_id),
+            e
+        );
+        e.to_string()
+    })?;
+
+    info!("Successfully reimported conversation");
+    Ok(())
+}
+
+#[tauri::command]
+fn batch_reimport_conversations(
+    state: State<AppState>,
+    import_ids: Vec<String>,
+) -> Result<Vec<(String, Result<(), String>)>, String> {
+    info!("Batch reimporting {} conversations", import_ids.len());
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let results = core
+        .batch_reimport_conversations(import_ids)
+        .map_err(|e| {
+            error!("Failed to batch reimport conversations: {}", e);
+            e.to_string()
+        })?;
+    info!("Batch results: {:#?}", results);
+
+    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
+    info!(
+        "Batch reimport completed: {} successful out of {} total",
+        success_count,
+        results.len()
+    );
+
+    Ok(results)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging first
@@ -700,6 +789,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_sapper,
             get_imports,
+            get_imports_with_compatibility,
             import_conversation,
             load_conversation,
             delete_import,
@@ -729,6 +819,8 @@ pub fn run() {
             copy_assets_to_json_dir,
             check_for_update,
             download_and_install_update,
+            reimport_conversation,
+            batch_reimport_conversations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

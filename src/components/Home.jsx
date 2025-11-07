@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import ImportListItem from "./ImportListItem";
 import EditDialog from "./EditDialog";
 import "./Home.css";
 
-function Home({ imports, onOpenConversation, onDeleteImport, onUpdateImport, onImport }) {
+function Home({ imports, onOpenConversation, onDeleteImport, onUpdateImport, onImport, onBatchUpdate, incompatibleCount }) {
   const [editingImport, setEditingImport] = useState(null);
 
   const handleSave = async (updatedImport) => {
@@ -14,6 +14,21 @@ function Home({ imports, onOpenConversation, onDeleteImport, onUpdateImport, onI
 
   return (
     <div className="home">
+      {incompatibleCount > 0 && (
+        <div className="incompatible-warning">
+          <div className="warning-content">
+            <span className="warning-icon">⚠️</span>
+            <span className="warning-text">
+              {incompatibleCount} conversation{incompatibleCount !== 1 ? "s" : ""} need{incompatibleCount === 1 ? "s" : ""} to be updated to work with this version
+            </span>
+          </div>
+          <button className="warning-button" onClick={onBatchUpdate}>
+            <RefreshCw size={18} />
+            Update All
+          </button>
+        </div>
+      )}
+
       <div className="home-header">
         <div className="header-content">
           <div>

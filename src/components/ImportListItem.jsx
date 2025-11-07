@@ -1,4 +1,4 @@
-import { ExternalLink, MoreVertical } from "lucide-react";
+import { ExternalLink, MoreVertical, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { convertFileSrc } from '@tauri-apps/api/core';
 import DropdownMenu from "./DropdownMenu";
@@ -9,6 +9,11 @@ function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
   const [showMenu, setShowMenu] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
+  // Extract entry and compatibility (if present)
+  const entry = importEntry.entry || importEntry;
+  const compatibility = importEntry.compatibility || null;
+  const isIncompatible = compatibility && !compatibility.isCompatible && compatibility.needsUpdate;
 
   const getDefaultName = (imp) => {
     if (imp.guildName === "Direct Messages") {
@@ -46,7 +51,7 @@ function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
   };
 
   const confirmUnimport = () => {
-    onUnimport(importEntry.id);
+    onUnimport(entry.id);
   };
 
   const menuItems = [
@@ -65,46 +70,60 @@ function ImportListItem({ importEntry, onOpen, onEdit, onUnimport }) {
   ];
 
   const getAvatarSrc = () => {
-    if (importEntry.avatarPath && !avatarError) {
-      return convertFileSrc(importEntry.avatarPath);
+    if (entry.avatarPath && !avatarError) {
+      return convertFileSrc(entry.avatarPath);
     }
     return null;
   };
 
   return (
-    <div className="import-item">
+    <div className={`import-item ${isIncompatible ? 'incompatible' : ''}`}>
       <div className="import-avatar">
         {getAvatarSrc() && !avatarError ? (
           <img
             src={getAvatarSrc()}
-            alt={getDisplayName(importEntry)}
+            alt={getDisplayName(entry)}
             onError={() => setAvatarError(true)}
           />
         ) : (
-          <span className="avatar-fallback">{getAvatarText(importEntry)}</span>
+          <span className="avatar-fallback">{getAvatarText(entry)}</span>
         )}
       </div>
 
       <div className="import-info">
         <div className="import-name">
-          {getDisplayName(importEntry)}
+          {getDisplayName(entry)}
+          {isIncompatible && (
+            <span className="incompatible-badge" title="Incompatible version - needs update">
+              <AlertTriangle size={16} />
+            </span>
+          )}
         </div>
         <div className="import-meta">
           <span className="meta-text">
-            Imported at {formatDate(importEntry.createdAt)}
+            Imported at {formatDate(entry.createdAt)}
           </span>
           <span className="meta-separator">•</span>
           <span className="meta-text">
-            {importEntry.messageCount.toLocaleString()} messages
+            {entry.messageCount.toLocaleString()} messages
           </span>
+          {compatibility && (
+            <>
+              <span className="meta-separator"> </span>
+              <span className="meta-text version-text">
+                v{compatibility.importVersion}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
       <div className="import-actions">
         <button
           className="action-btn open-btn"
-          onClick={() => onOpen(importEntry.id)}
-          title="Open conversation"
+          onClick={() => !isIncompatible && onOpen(entry.id)}
+          disabled={isIncompatible}
+          title={isIncompatible ? "Cannot open - incompatible version" : "Open conversation"}
         >
           <ExternalLink size={18} />
         </button>

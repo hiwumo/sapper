@@ -370,21 +370,44 @@ impl SapperCore {
         Ok(MemberStorage { members })
     }
 
-    // Save members to import directory
+    // Save members to import directory (uses new ImportData format)
     fn save_members(&self, import_dir: &Path, members: &MemberStorage) -> io::Result<()> {
-        let members_path = import_dir.join("members.json");
-        let temp_path = import_dir.join("members.json.tmp");
+        // Create new ImportData structure
+        let import_data = ImportData {
+            import_version: crate::versioning::CURRENT_VERSION.to_string(),
+            members: members.members.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            last_updated: chrono::Utc::now().to_rfc3339(),
+        };
 
-        let contents = serde_json::to_string_pretty(members)
+        // Save as import_data.json
+        let import_data_path = import_dir.join("import_data.json");
+        let temp_path = import_dir.join("import_data.json.tmp");
+
+        let contents = serde_json::to_string_pretty(&import_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         fs::write(&temp_path, contents)?;
-        fs::rename(temp_path, members_path)?;
+        fs::rename(temp_path, import_data_path)?;
 
         Ok(())
     }
 
-    // Load members from import directory
+    // Save ImportData directly (for updates)
+    fn save_import_data(&self, import_dir: &Path, import_data: &ImportData) -> io::Result<()> {
+        let import_data_path = import_dir.join("import_data.json");
+        let temp_path = import_dir.join("import_data.json.tmp");
+
+        let contents = serde_json::to_string_pretty(import_data)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        fs::write(&temp_path, contents)?;
+        fs::rename(temp_path, import_data_path)?;
+
+        Ok(())
+    }
+
+    // Load members from import directory (supports both old and new formats)
     pub fn load_members(&self, import_id: &str) -> io::Result<MemberStorage> {
         let metadata = self.load_metadata()?;
         let import_entry = metadata
@@ -393,18 +416,64 @@ impl SapperCore {
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
 
-        let members_path = PathBuf::from(&import_entry.import_path).join("members.json");
+        let import_dir = PathBuf::from(&import_entry.import_path);
+        let import_data_path = import_dir.join("import_data.json");
+        let members_path = import_dir.join("members.json");
 
-        if !members_path.exists() {
-            // If members.json doesn't exist (old imports), create it from the export
-            let export = self.load_export(import_id)?;
-            let members = self.extract_members(&export)?;
-            self.save_members(&PathBuf::from(&import_entry.import_path), &members)?;
+        // Try to load new format first (import_data.json)
+        if import_data_path.exists() {
+            let contents = fs::read_to_string(import_data_path)?;
+            let import_data: ImportData = serde_json::from_str(&contents)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            return Ok(MemberStorage {
+                members: import_data.members,
+            });
+        }
+
+        // Fallback to old format (members.json)
+        if members_path.exists() {
+            let contents = fs::read_to_string(members_path)?;
+            let members: MemberStorage = serde_json::from_str(&contents)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+            // Migrate to new format
+            self.save_members(&import_dir, &members)?;
             return Ok(members);
         }
 
-        let contents = fs::read_to_string(members_path)?;
-        serde_json::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        // If neither exists, create from export
+        let export = self.load_export(import_id)?;
+        let members = self.extract_members(&export)?;
+        self.save_members(&import_dir, &members)?;
+        Ok(members)
+    }
+
+    // Load ImportData (new format only)
+    pub fn load_import_data(&self, import_id: &str) -> io::Result<ImportData> {
+        let metadata = self.load_metadata()?;
+        let import_entry = metadata
+            .imports
+            .iter()
+            .find(|e| e.id == import_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
+
+        let import_dir = PathBuf::from(&import_entry.import_path);
+        let import_data_path = import_dir.join("import_data.json");
+
+        if !import_data_path.exists() {
+            // If import_data.json doesn't exist, create it from members
+            let members = self.load_members(import_id)?;
+            return Ok(ImportData {
+                import_version: crate::versioning::CURRENT_VERSION.to_string(),
+                members: members.members,
+                created_at: import_entry.created_at.clone(),
+                last_updated: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+
+        let contents = fs::read_to_string(import_data_path)?;
+        serde_json::from_str(&contents)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     // Update a specific member's information
@@ -423,16 +492,20 @@ impl SapperCore {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
 
         let import_dir = PathBuf::from(&import_entry.import_path);
-        let mut members = self.load_members(import_id)?;
+        let mut import_data = self.load_import_data(import_id)?;
 
-        if let Some(member) = members.members.iter_mut().find(|m| m.id == member_id) {
+        if let Some(member) = import_data.members.iter_mut().find(|m| m.id == member_id) {
             if let Some(nick) = nickname {
                 member.nickname = nick;
             }
             if let Some(avatar) = avatar_url {
                 member.avatar_url = avatar;
             }
-            self.save_members(&import_dir, &members)?;
+
+            // Update last_updated timestamp
+            import_data.last_updated = chrono::Utc::now().to_rfc3339();
+
+            self.save_import_data(&import_dir, &import_data)?;
             Ok(())
         } else {
             Err(io::Error::new(
@@ -925,5 +998,84 @@ impl SapperCore {
         }
 
         Ok(copied_count)
+    }
+
+    /// Reimport a conversation from its original export.json to update it to the current version
+    pub fn reimport_conversation(&self, import_id: &str) -> io::Result<()> {
+        let metadata = self.load_metadata()?;
+        let import_entry = metadata
+            .imports
+            .iter()
+            .find(|e| e.id == import_id)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
+
+        let import_dir = PathBuf::from(&import_entry.import_path);
+        let export_path = import_dir.join("export.json");
+
+        // Load the original export
+        let export_data = self.parse_export(&export_path)?;
+
+        // Recreate message storage
+        let stored_messages = self.convert_messages_to_stored(&export_data, &import_dir)?;
+
+        // Recreate chunks
+        let storage = MessageStorage::new(import_dir.clone());
+        storage.create_chunks(stored_messages.clone())?;
+
+        // Recreate search index
+        let index_dir = import_dir.join("search_index");
+        // Remove old index
+        if index_dir.exists() {
+            fs::remove_dir_all(&index_dir)?;
+        }
+        fs::create_dir_all(&index_dir)?;
+        let search_index = MessageSearchIndex::create(&index_dir)?;
+        search_index.index_messages(&stored_messages)?;
+
+        // Extract and update members
+        let members = self.extract_members(&export_data)?;
+
+        // Load existing import_data to preserve user customizations
+        let existing_import_data = self.load_import_data(import_id).ok();
+
+        // Create updated import_data
+        let mut new_import_data = ImportData {
+            import_version: crate::versioning::CURRENT_VERSION.to_string(),
+            members: members.members.clone(),
+            created_at: existing_import_data
+                .as_ref()
+                .map(|d| d.created_at.clone())
+                .unwrap_or_else(|| import_entry.created_at.clone()),
+            last_updated: chrono::Utc::now().to_rfc3339(),
+        };
+
+        // Preserve user customizations (nicknames, avatars) if they exist
+        if let Some(existing) = existing_import_data {
+            for new_member in &mut new_import_data.members {
+                if let Some(existing_member) = existing.members.iter().find(|m| m.id == new_member.id) {
+                    // Only preserve if they were customized (different from original)
+                    new_member.nickname = existing_member.nickname.clone();
+                    new_member.avatar_url = existing_member.avatar_url.clone();
+                }
+            }
+        }
+
+        // Save updated import_data
+        self.save_import_data(&import_dir, &new_import_data)?;
+
+        Ok(())
+    }
+
+    /// Batch reimport multiple conversations
+    pub fn batch_reimport_conversations(&self, import_ids: Vec<String>) -> io::Result<Vec<(String, Result<(), String>)>> {
+        let mut results = Vec::new();
+
+        for import_id in import_ids {
+            let result = self.reimport_conversation(&import_id)
+                .map_err(|e| e.to_string());
+            results.push((import_id, result));
+        }
+
+        Ok(results)
     }
 }
