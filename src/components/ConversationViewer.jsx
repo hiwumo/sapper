@@ -695,8 +695,8 @@ function ConversationViewer({ importId, theme }) {
                 <button
                   className="date-filter-clear-btn"
                   onClick={() => {
-                    setAfterDate("");
-                    setBeforeDate("");
+                    clearDateFilter();
+                    setShowDateFilter(false);
                   }}
                 >
                   Clear
