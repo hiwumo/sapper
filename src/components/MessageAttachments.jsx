@@ -216,7 +216,7 @@ function CustomAudioPlayer({ src, type, fileName }) {
   );
 }
 
-function MessageAttachments({ mediaRefs, onImageClick, directImageUrl }) {
+function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsVideo }) {
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
 
@@ -241,10 +241,10 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl }) {
   const images = [];
   const otherAttachments = [];
 
-  // Add directImageUrl if provided (message was only an image URL)
+  // Add directImageUrl if provided (message was only an image/video URL)
   if (directImageUrl) {
     const fileName = directImageUrl.split("/").pop().split("?")[0]; // Extract filename from URL
-    images.push({ ref: directImageUrl, fileName, idx: -1, isDirect: true });
+    images.push({ ref: directImageUrl, fileName, idx: -1, isDirect: true, isVideoGif: !!directIsVideo });
   }
 
   if (mediaRefs) {
@@ -290,11 +290,21 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl }) {
                 className="attachment-image-grid-item"
                 onClick={() => openCarousel(idx)}
               >
-                <img
-                  src={img.isDirect ? img.ref : getAttachmentUrl(img.ref)}
-                  alt={img.fileName}
-                  loading="lazy"
-                />
+                {img.isVideoGif ? (
+                  <video
+                    src={img.ref}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={img.isDirect ? img.ref : getAttachmentUrl(img.ref)}
+                    alt={img.fileName}
+                    loading="lazy"
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -364,10 +374,20 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl }) {
             )}
 
             <div className="carousel-image-container">
-              <img
-                src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
-                alt={images[carouselIndex].fileName}
-              />
+              {images[carouselIndex].isVideoGif ? (
+                <video
+                  src={images[carouselIndex].ref}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
+                  alt={images[carouselIndex].fileName}
+                />
+              )}
             </div>
 
             {images.length > 1 && (
