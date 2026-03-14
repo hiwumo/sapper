@@ -1,11 +1,9 @@
 [package]
 name = "sapper"
-version = "0.3.1"
-description = "A Tauri App"
+version = "0.3.2"
+description = "A fast, searchable interface for exported Discord Chats"
 authors = ["hiwumo"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -18,27 +16,28 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
-tauri-plugin-opener = "2"
+tauri = { version = "2.10", features = ["protocol-asset"] }
+tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-uuid = { version = "1.18.1", features = ["v4"] }
+uuid = { version = "1.22", features = ["v4"] }
 confy = "2.0.0"
 walkdir = "2.5.0"
 directories = "6.0.0"
-lru = "0.16.2"
-tokio = "1.48.0"
-chrono = { version = "0.4.42", features = ["serde"] }
-tauri-plugin-dialog = "2"
-bincode = "2.0"
+lru = "0.16"
+tokio = "1.50"
+chrono = { version = "0.4", features = ["serde"] }
+tauri-plugin-dialog = "2.6"
+# TODO: replace with wincode
+bincode = "2"
 tantivy = "0.25"
 tauri-plugin-clipboard-manager = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
-regex = "1.11"
-discord-rich-presence = "1.0"
+regex = "1.12"
+discord-rich-presence = "1.1"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2"
+tauri-plugin-updater = "2.10"
 

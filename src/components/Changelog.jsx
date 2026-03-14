@@ -23,6 +23,21 @@ const CHANGELOG = {
       },
     ],
   },
+  "0.3.2": {
+    date: "2026-03-14",
+    changes: [
+      {
+        type: "improvement",
+        title: "Better Video and Audio player",
+        description: "It should look way better to play now ^-^",
+      },
+      {
+        type: "fix",
+        title: "Media loads correctly",
+        description: "Gifs, videos, and audio now load properly; and images are no longer clipped!",
+      }
+    ]
+  }
 };
 
 function Changelog({ isOpen, onClose, version }) {
