@@ -33,12 +33,12 @@ const CHANGELOG = {
       },
       {
         type: "improvement",
-        title: "Better search",
+        title: "Improved Search and Message Loading",
         description: "Substantially better and faster searching!",
       },
       {
         type: "fix",
-        title: "Media loads correctly",
+        title: "Media fix!",
         description: "Gifs, videos, and audio now load properly; and images are no longer clipped!",
       }
     ]
