@@ -39,3 +39,4 @@ todo.md
 
 # Environment variables (contains signing key info)
 .env
+.cargo
