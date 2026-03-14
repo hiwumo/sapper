@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -11,6 +11,7 @@ import MemberEditor from "./MemberEditor";
 import "./ConversationViewer.css";
 
 const MESSAGES_PER_PAGE = 50;
+const MAX_RENDERED_MESSAGES = 150;
 const SEARCH_RESULTS_PER_PAGE = 10;
 
 function ConversationViewer({ importId, theme }) {
@@ -59,16 +60,23 @@ function ConversationViewer({ importId, theme }) {
     }
   }, [messages, hasScrolledToBottom]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Restore scroll position after loading older messages
+    // useLayoutEffect runs synchronously before browser paint, preventing visible jump
     if (scrollRestorationRef.current && messagesContainerRef.current) {
       const container = messagesContainerRef.current;
-      const { previousScrollHeight, previousScrollTop } = scrollRestorationRef.current;
-      const newScrollHeight = container.scrollHeight;
-      const scrollDiff = newScrollHeight - previousScrollHeight;
+      const { anchorMessageId, anchorOffset } = scrollRestorationRef.current;
 
-      container.scrollTop = previousScrollTop + scrollDiff;
+      const anchorElement = container.querySelector(`[data-message-id="${anchorMessageId}"]`);
+      if (anchorElement) {
+        const containerRect = container.getBoundingClientRect();
+        const anchorRect = anchorElement.getBoundingClientRect();
+        const currentOffset = anchorRect.top - containerRect.top;
+        container.scrollTop += currentOffset - anchorOffset;
+      }
+
       scrollRestorationRef.current = null;
+      setIsLoadingMore(false);
     }
   }, [messages]);
 
@@ -273,22 +281,43 @@ function ConversationViewer({ importId, theme }) {
       }
 
       if (direction === "up") {
-        // Save scroll position before adding messages
+        // Anchor to the first currently-visible message so we can restore position after DOM update
         const container = messagesContainerRef.current;
         if (container) {
-          scrollRestorationRef.current = {
-            previousScrollHeight: container.scrollHeight,
-            previousScrollTop: container.scrollTop,
-          };
+          const containerRect = container.getBoundingClientRect();
+          const messageElements = container.querySelectorAll('[data-message-id]');
+          for (const el of messageElements) {
+            const rect = el.getBoundingClientRect();
+            if (rect.bottom > containerRect.top) {
+              scrollRestorationRef.current = {
+                anchorMessageId: el.getAttribute('data-message-id'),
+                anchorOffset: rect.top - containerRect.top,
+              };
+              break;
+            }
+          }
         }
-        console.log([...newMessages, ...messages]);
-        setMessages((prev) => [...newMessages, ...prev]);
+        // isLoadingMore is cleared in the useLayoutEffect after scroll restoration
+        setMessages((prev) => {
+          const combined = [...newMessages, ...prev];
+          // Trim from the bottom to keep DOM size bounded
+          if (combined.length > MAX_RENDERED_MESSAGES) {
+            return combined.slice(0, MAX_RENDERED_MESSAGES);
+          }
+          return combined;
+        });
       } else {
-        console.log([...newMessages, ...messages]);
-        setMessages((prev) => [...prev, ...newMessages]);
+        setMessages((prev) => {
+          const combined = [...prev, ...newMessages];
+          // Trim from the top to keep DOM size bounded
+          if (combined.length > MAX_RENDERED_MESSAGES) {
+            return combined.slice(combined.length - MAX_RENDERED_MESSAGES);
+          }
+          return combined;
+        });
+        setIsLoadingMore(false);
       }
 
-      setIsLoadingMore(false);
       return newMessages.length;
     } catch (err) {
       console.error("Failed to load more messages:", err);
@@ -459,8 +488,9 @@ function ConversationViewer({ importId, theme }) {
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     const scrolledFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    // Show jump to bottom button if scrolled up more than 1 chunk worth (rough estimate: 1000px)
-    setShowJumpToBottom(scrolledFromBottom > 1000);
+    // Show jump to bottom button if scrolled up significantly OR if latest messages aren't loaded
+    const latestMessagesLoaded = messages.length > 0 && messages[messages.length - 1].id >= totalMessages - 1;
+    setShowJumpToBottom(scrolledFromBottom > 1000 || !latestMessagesLoaded);
 
     // Save scroll position (debounced)
     if (messages.length > 0) {
@@ -487,7 +517,7 @@ function ConversationViewer({ importId, theme }) {
 
     if (scrollTop < 100 && messages.length > 0 && messages[0].id > 0) {
       loadMoreMessages("up");
-    } else if (scrollHeight - scrollTop - clientHeight < 100 && messages.length < totalMessages) {
+    } else if (scrolledFromBottom < 100 && messages.length > 0 && messages[messages.length - 1].id < totalMessages - 1) {
       loadMoreMessages("down");
     }
   }
