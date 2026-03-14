@@ -81,9 +81,11 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
     }
   };
 
-  // Properly handle avatar path - check if it's already a full path or relative
+  // Properly handle avatar path - check if it's an absolute path or relative
+  // A relative path like "working.json_Files/file.png" should NOT be treated as absolute
+  const isAbsolutePath = (p) => /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/');
   const avatarUrl = avatarPath
-    ? (avatarPath.includes('\\') || avatarPath.includes('/'))
+    ? isAbsolutePath(avatarPath)
       ? convertFileSrc(avatarPath)  // Full path
       : convertFileSrc(`${importPath}\\attachments\\${avatarPath}`)  // Relative path
     : null;

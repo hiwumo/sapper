@@ -313,6 +313,33 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
   const onlyTenorUrl = isOnlyTenorUrl(message.content);
   const shouldHideContent = onlyImageUrl !== null || onlyTenorUrl !== null;
 
+  // When content is just a URL (image/tenor), check if embeds have a local thumbnail
+  // that we should use instead of the remote URL (which may be expired or blocked)
+  let resolvedDirectUrl = onlyImageUrl;
+  let resolvedIsVideo = false;
+  let hasLocalGif = false;
+
+  if ((onlyImageUrl || onlyTenorUrl) && message.embeds?.length > 0) {
+    for (const embed of message.embeds) {
+      // Check for local thumbnail (GIF) or video (Tenor stores as MP4)
+      const localThumb = embed.thumbnail?.url && !/^https?:\/\//.test(embed.thumbnail.url)
+        ? embed.thumbnail.url : null;
+      const localVideo = embed.video?.url && !/^https?:\/\//.test(embed.video.url)
+        ? embed.video.url : null;
+
+      if (localThumb || localVideo) {
+        // Prefer thumbnail if it's a GIF; otherwise use video for Tenor-style MP4 GIFs
+        const isThumbGif = localThumb && /\.gif$/i.test(localThumb);
+        const chosen = isThumbGif ? localThumb : (localVideo || localThumb);
+        const fullPath = `${importPath}\\attachments\\${chosen}`;
+        resolvedDirectUrl = convertFileSrc(fullPath);
+        resolvedIsVideo = !isThumbGif && !!localVideo;
+        hasLocalGif = true;
+        break;
+      }
+    }
+  }
+
   return (
     <>
     <MessageReply
@@ -343,7 +370,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         {message.content && message.content.length > 0 && !shouldHideContent && (
           <div className="message-text">{processContent(message, importPath, convertFileSrc)}</div>
         )}
-        {onlyTenorUrl && (
+        {onlyTenorUrl && !hasLocalGif && (
           <TenorEmbed gifId={onlyTenorUrl.gifId} url={onlyTenorUrl.url} />
         )}
         <MessageStickers
@@ -354,9 +381,10 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         <MessageAttachments
           mediaRefs={message.mediaRefs}
           onImageClick={onImageClick}
-          directImageUrl={onlyImageUrl}
+          directImageUrl={resolvedDirectUrl}
+          directIsVideo={resolvedIsVideo}
         />
-        {!onlyTenorUrl && (
+        {!onlyTenorUrl && !hasLocalGif && (
           <MessageEmbeds
             embeds={message.embeds}
             importPath={importPath}
