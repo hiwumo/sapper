@@ -344,6 +344,7 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 .messages-area {
@@ -1777,34 +1778,43 @@
   padding: 0 0.25rem;
 }
 
-/* Jump to Bottom Button */
-.jump-to-bottom-button {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #5865f2;
-  border: none;
-  color: white;
+/* Jump to Present Bar */
+.jump-to-present-bar {
+  position: absolute;
+  bottom: 1.5rem;
+  left: calc((100% - 400px) / 2);
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
+  gap: 0.75rem;
+  background: #2b2d31;
+  border-radius: 5px;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   z-index: 100;
+  white-space: nowrap;
 }
 
-.jump-to-bottom-button:hover {
+.jump-to-present-label {
+  color: #b5bac1;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.jump-to-present-button {
+  background: #5865f2;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.jump-to-present-button:hover {
   background: #4752c4;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-.jump-to-bottom-button:active {
-  transform: translateY(0);
 }
 
 /* System Messages */

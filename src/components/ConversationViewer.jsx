@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Hash, AtSign, Search, FolderOpen, ArrowDown, Filter, X } from "lucide-react";
+import { Hash, AtSign, Search, FolderOpen, Filter, X } from "lucide-react";
 import { themes } from "../themes";
 import { useToast } from "./ToastContainer";
 import Message from "./Message";
@@ -492,9 +492,29 @@ function ConversationViewer({ importId, theme }) {
     }
   }
 
-  function scrollToBottom() {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+  async function jumpToPresent() {
+    try {
+      setIsLoadingMore(true);
+      const startIndex = Math.max(0, totalMessages - MESSAGES_PER_PAGE);
+      const count = totalMessages - startIndex;
+      const latestMessages = await invoke("load_messages", {
+        importId,
+        startIndex,
+        count,
+      });
+      if (latestMessages.length > 0) {
+        setMessages(latestMessages);
+        setShowJumpToBottom(false);
+        setTimeout(() => {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView();
+          }
+        }, 50);
+      }
+      setIsLoadingMore(false);
+    } catch (err) {
+      console.error("Failed to jump to present:", err);
+      setIsLoadingMore(false);
     }
   }
 
@@ -748,6 +768,16 @@ function ConversationViewer({ importId, theme }) {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Jump to Present Bar */}
+        {showJumpToBottom && (
+          <div className="jump-to-present-bar">
+            <span className="jump-to-present-label">You're Viewing Older Messages</span>
+            <button className="jump-to-present-button" onClick={jumpToPresent}>
+              Jump to Present
+            </button>
+          </div>
+        )}
+
         {/* Member List / Search Results (20%) */}
         <div className="member-list">
           {searchActive ? (
@@ -886,13 +916,6 @@ function ConversationViewer({ importId, theme }) {
           )}
         </div>
       </div>
-
-      {/* Jump to Bottom Button */}
-      {showJumpToBottom && (
-        <button className="jump-to-bottom-button" onClick={scrollToBottom}>
-          <ArrowDown size={20} />
-        </button>
-      )}
 
       {/* Image Viewer Modal */}
       {viewingImage && (
