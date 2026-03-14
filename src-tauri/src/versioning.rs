@@ -26,6 +26,11 @@ pub const VERSION_HISTORY: &[VersionLink] = &[
         to: "0.3.1",
         compatibility: CompatibilityStatus::Incompatible,
     },
+    VersionLink {
+        from: "0.3.1",
+        to: "0.4.0",
+        compatibility: CompatibilityStatus::Incompatible,
+    }
 ];
 
 /// Current version of the import format

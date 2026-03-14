@@ -23,13 +23,18 @@ const CHANGELOG = {
       },
     ],
   },
-  "0.3.2": {
+  "0.4.0": {
     date: "2026-03-14",
     changes: [
       {
         type: "improvement",
         title: "Better Video and Audio player",
         description: "It should look way better to play now ^-^",
+      },
+      {
+        type: "improvement",
+        title: "Better search",
+        description: "Substantially better and faster searching!",
       },
       {
         type: "fix",
