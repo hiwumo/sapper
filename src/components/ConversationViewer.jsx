@@ -897,11 +897,11 @@ function ConversationViewer({ importId, theme }) {
       {/* Image Viewer Modal */}
       {viewingImage && (
         <div className="image-viewer-modal" onClick={() => setViewingImage(null)}>
-          <div className="image-viewer-content" onClick={(e) => e.stopPropagation()}>
-            <button className="image-viewer-close" onClick={() => setViewingImage(null)}>
+          <div className="image-viewer-content">
+            <button className="image-viewer-close" onClick={(e) => { e.stopPropagation(); setViewingImage(null); }}>
               ✕
             </button>
-            <img src={viewingImage} alt="Viewing" />
+            <img src={viewingImage} alt="Viewing" onClick={(e) => e.stopPropagation()} />
           </div>
         </div>
       )}
