@@ -66,6 +66,25 @@ fn get_imports_with_compatibility(
     let mut imports_with_compat = Vec::new();
 
     for entry in metadata.imports {
+        // Check if the import folder actually exists on disk
+        let import_dir = std::path::Path::new(&entry.import_path);
+        let is_missing = !import_dir.exists();
+
+        if is_missing {
+            warn!("Import folder missing for '{}': {}", entry.alias, entry.import_path);
+            imports_with_compat.push(ImportEntryWithCompatibility {
+                entry,
+                compatibility: VersionCompatibility {
+                    is_compatible: false,
+                    current_version: versioning::CURRENT_VERSION.to_string(),
+                    import_version: "unknown".to_string(),
+                    needs_update: false,
+                },
+                missing: true,
+            });
+            continue;
+        }
+
         // Try to load import_data to get version
         let import_version = core
             .load_import_data(&entry.id)
@@ -86,6 +105,7 @@ fn get_imports_with_compatibility(
                 import_version,
                 needs_update,
             },
+            missing: false,
         });
     }
 

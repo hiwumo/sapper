@@ -43,6 +43,8 @@ function AppContent() {
     jsonPath: null,
   });
   const [incompatibleImports, setIncompatibleImports] = useState([]);
+  const [missingImports, setMissingImports] = useState([]);
+  const [showMissingImportsDialog, setShowMissingImportsDialog] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
@@ -147,9 +149,18 @@ function AppContent() {
     try {
       const importsList = await invoke("get_imports_with_compatibility");
       console.log("imports list with compatibility:", importsList);
-      setImports(importsList);
 
-      const incompatible = importsList.filter(
+      const missing = importsList.filter((imp) => imp.missing);
+      const valid = importsList.filter((imp) => !imp.missing);
+
+      setImports(valid);
+      setMissingImports(missing);
+
+      if (missing.length > 0) {
+        setShowMissingImportsDialog(true);
+      }
+
+      const incompatible = valid.filter(
         (imp) => !imp.compatibility.isCompatible && imp.compatibility.needsUpdate
       );
       setIncompatibleImports(incompatible);
@@ -448,6 +459,21 @@ function AppContent() {
     }
   }
 
+  async function handleRemoveMissingImports() {
+    try {
+      for (const imp of missingImports) {
+        await invoke("delete_import", { importId: imp.id });
+      }
+      toast.success(`Removed ${missingImports.length} missing conversation(s)`);
+      setMissingImports([]);
+      setShowMissingImportsDialog(false);
+      await loadImports();
+    } catch (error) {
+      console.error("Failed to remove missing imports:", error);
+      toast.error(`Failed to remove missing imports: ${error}`);
+    }
+  }
+
   async function handleBatchUpdate() {
     try {
       setUpdating(true);
@@ -550,6 +576,49 @@ function AppContent() {
         onContinue={handleMissingAssetsContinue}
         onCancel={handleMissingAssetsCancel}
       />
+
+      <Dialog
+        isOpen={showMissingImportsDialog}
+        onClose={() => setShowMissingImportsDialog(false)}
+        title="Missing Conversations"
+        confirmText="Remove All"
+        cancelText="Dismiss"
+        onConfirm={handleRemoveMissingImports}
+        onCancel={() => setShowMissingImportsDialog(false)}
+        type="danger"
+      >
+        <div className="dialog-message">
+          <p>
+            {missingImports.length} conversation{missingImports.length !== 1 ? "s have" : " has"} missing data folders. The original import folder may have been moved or deleted.
+          </p>
+          <div style={{ marginTop: "0.75rem", maxHeight: "200px", overflowY: "auto" }}>
+            {missingImports.map((imp) => {
+              const entry = imp.entry || imp;
+              const name = entry.alias || entry.channelName || "Unknown";
+              return (
+                <div key={entry.id} style={{
+                  padding: "0.5rem 0.75rem",
+                  marginBottom: "0.25rem",
+                  background: "var(--bg-secondary, #1e1f22)",
+                  borderRadius: "4px",
+                  fontSize: "0.875rem",
+                }}>
+                  <div style={{ fontWeight: 500, color: "var(--text-primary, #dbdee1)" }}>{name}</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #949ba4)", marginTop: "2px" }}>
+                    {entry.channelName} in {entry.guildName} &bull; {entry.messageCount.toLocaleString()} messages
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #949ba4)", marginTop: "2px", wordBreak: "break-all" }}>
+                    {entry.importPath}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted, #949ba4)" }}>
+            You can remove these entries to clean up your list, or dismiss to keep them.
+          </p>
+        </div>
+      </Dialog>
 
       <Changelog
         isOpen={showChangelog}

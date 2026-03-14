@@ -264,4 +264,5 @@ pub struct ImportEntryWithCompatibility {
     #[serde(flatten)]
     pub entry: ImportEntry,
     pub compatibility: VersionCompatibility,
+    pub missing: bool,
 }
