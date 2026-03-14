@@ -1606,14 +1606,14 @@
 }
 
 .search-result-message .message-avatar {
-  width: 32px;
-  height: 32px;
-  left: 1rem;
+  width: 42px;
+  height: 42px;
+  top: 1rem;
 }
 
 .search-result-message .message-content {
   padding-left: 0;
-  margin-left: 3rem;
+  margin-left: 3.2rem;
 }
 
 .search-result-message .message-text {
@@ -1644,6 +1644,34 @@
 .search-result-message .message-reply-reference .reply-avatar .message-avatar {
   width: 16px;
   height: 16px;
+}
+
+.search-result-card {
+  overflow: hidden;
+}
+
+.search-result-message .attachment-image,
+.search-result-message .attachment-image-grid-item img,
+.search-result-message .attachment-image-grid-item video,
+.search-result-message .attachment-image img {
+  max-width: 100%;
+}
+
+.search-result-message .attachment-image-grid {
+  max-width: 100%;
+}
+
+.search-result-message .custom-video-player {
+  max-width: 100%;
+}
+
+.search-result-message .custom-audio-player {
+  max-width: 100%;
+}
+
+.search-result-message .attachment-file {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .search-jump-button {
