@@ -1,4 +1,54 @@
 import { useState, useRef, useEffect } from "react";
+import hljs from "highlight.js/lib/core";
+import "highlight.js/styles/github-dark-dimmed.css";
+import javascript from "highlight.js/lib/languages/javascript";
+import typescript from "highlight.js/lib/languages/typescript";
+import python from "highlight.js/lib/languages/python";
+import java from "highlight.js/lib/languages/java";
+import cpp from "highlight.js/lib/languages/cpp";
+import c from "highlight.js/lib/languages/c";
+import csharp from "highlight.js/lib/languages/csharp";
+import css from "highlight.js/lib/languages/css";
+import xml from "highlight.js/lib/languages/xml";
+import json from "highlight.js/lib/languages/json";
+import bash from "highlight.js/lib/languages/bash";
+import sql from "highlight.js/lib/languages/sql";
+import rust from "highlight.js/lib/languages/rust";
+import go from "highlight.js/lib/languages/go";
+import ruby from "highlight.js/lib/languages/ruby";
+import php from "highlight.js/lib/languages/php";
+import lua from "highlight.js/lib/languages/lua";
+import yaml from "highlight.js/lib/languages/yaml";
+import markdown from "highlight.js/lib/languages/markdown";
+
+hljs.registerLanguage("javascript", javascript);
+hljs.registerLanguage("js", javascript);
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("ts", typescript);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("py", python);
+hljs.registerLanguage("java", java);
+hljs.registerLanguage("cpp", cpp);
+hljs.registerLanguage("c", c);
+hljs.registerLanguage("csharp", csharp);
+hljs.registerLanguage("cs", csharp);
+hljs.registerLanguage("css", css);
+hljs.registerLanguage("html", xml);
+hljs.registerLanguage("xml", xml);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("sh", bash);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("rust", rust);
+hljs.registerLanguage("go", go);
+hljs.registerLanguage("ruby", ruby);
+hljs.registerLanguage("rb", ruby);
+hljs.registerLanguage("php", php);
+hljs.registerLanguage("lua", lua);
+hljs.registerLanguage("yaml", yaml);
+hljs.registerLanguage("yml", yaml);
+hljs.registerLanguage("markdown", markdown);
+hljs.registerLanguage("md", markdown);
 import MessageAvatar from "./MessageAvatar";
 import MessageReply from "./MessageReply";
 import MessageStickers from "./MessageStickers";
@@ -163,19 +213,92 @@ function parseMarkdown(text) {
   return result;
 }
 
+/**
+ * Highlight a code string with highlight.js.
+ * Returns an HTML string with syntax spans.
+ */
+function highlightCode(code, lang) {
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      return hljs.highlight(code, { language: lang }).value;
+    } catch (_) { /* fall through */ }
+  }
+  // No language specified — render as plain text (no auto-detect with limited language set)
+  return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Replace Discord-style mention placeholders (<@id>) with display names
+ * using the message.mentions array.
+ */
+function replaceMentions(text, mentions) {
+  if (!mentions || mentions.length === 0) return text;
+  // Discord raw content uses <@ID> or <@!ID> for mentions
+  return text.replace(/<@!?(\d+)>/g, (match, id) => {
+    const user = mentions.find(m => m.id === id);
+    if (user) {
+      const displayName = user.nickname || user.name;
+      return `__MENTION_${id}__${displayName}__MENTIONEND__`;
+    }
+    return match;
+  });
+}
+
 function processContent(message, importPath, convertFileSrc) {
-  const { content, inlineEmojis } = message;
+  const { content, inlineEmojis, mentions } = message;
   if (!content) return null;
 
-  // First, extract and replace markdown links and standalone URLs with placeholders
   const replacements = [];
   let processedContent = content;
 
-  // Extract markdown links first (including GIF links)
+  // 1. Extract fenced code blocks FIRST (before anything else)
+  const fencedCodeRegex = /```(\w*)\n?([\s\S]*?)```/g;
+  processedContent = processedContent.replace(fencedCodeRegex, (match, lang, code) => {
+    const idx = replacements.length;
+    replacements.push({ type: 'codeblock', lang: lang || '', code: code.replace(/\n$/, '') });
+    return `__CODEBLOCK_${idx}__`;
+  });
+
+  // 2. Extract inline code
+  const inlineCodeRegex = /`([^`\n]+)`/g;
+  processedContent = processedContent.replace(inlineCodeRegex, (match, code) => {
+    const idx = replacements.length;
+    replacements.push({ type: 'inlinecode', code });
+    return `__INLINECODE_${idx}__`;
+  });
+
+  // 3. Replace mentions
+  processedContent = replaceMentions(processedContent, mentions);
+
+  // Also handle content where mentions are already resolved as @displayName
+  // (some exports store "@nickname" directly in content)
+  if (mentions && mentions.length > 0) {
+    for (const m of mentions) {
+      const displayName = m.nickname || m.name;
+      // Only replace if not already wrapped by the <@id> replacement above
+      if (!processedContent.includes(`__MENTION_${m.id}__`)) {
+        const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const atMentionRegex = new RegExp(`@${escaped}`, 'g');
+        processedContent = processedContent.replace(atMentionRegex, (match) => {
+          const idx = replacements.length;
+          replacements.push({ type: 'mention', name: displayName });
+          return `__MENTIONOBJ_${idx}__`;
+        });
+      }
+    }
+  }
+
+  // Convert __MENTION_id__name__MENTIONEND__ to placeholder objects
+  processedContent = processedContent.replace(/__MENTION_(\d+)__(.+?)__MENTIONEND__/g, (match, id, name) => {
+    const idx = replacements.length;
+    replacements.push({ type: 'mention', name });
+    return `__MENTIONOBJ_${idx}__`;
+  });
+
+  // 4. Extract markdown links (including GIF links)
   const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
   processedContent = processedContent.replace(markdownLinkRegex, (match, text, url) => {
     const idx = replacements.length;
-    // Check if it's a GIF link - show GIF, hide link
     if (isGifUrl(url)) {
       replacements.push({ type: 'gif', url });
       return `__GIF_${idx}__`;
@@ -185,17 +308,16 @@ function processContent(message, importPath, convertFileSrc) {
     }
   });
 
-  // Extract standalone URLs (not in markdown links)
+  // 5. Extract standalone URLs
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   processedContent = processedContent.replace(urlRegex, (match) => {
     const idx = replacements.length;
     const url = match;
-    // Check if it's a GIF - show GIF, hide URL
     if (isGifUrl(url)) {
       replacements.push({ type: 'gif', url });
       return `__GIF_${idx}__`;
     } else if (isMediaUrl(url)) {
-      replacements.push({ type: 'media', url }); // Will be filtered out
+      replacements.push({ type: 'media', url });
       return `__MEDIA_${idx}__`;
     } else {
       replacements.push({ type: 'url', url });
@@ -206,36 +328,50 @@ function processContent(message, importPath, convertFileSrc) {
   // Now parse markdown on the text with placeholders
   const markdownParsed = parseMarkdown(processedContent);
 
-  // Split by placeholders and reconstruct
-  const placeholderRegex = /__(MDLINK|URL|GIF|MEDIA)_(\d+)__/g;
+  // Split by ALL placeholders and reconstruct
+  const placeholderRegex = /__(CODEBLOCK|INLINECODE|MENTIONOBJ|MDLINK|URL|GIF|MEDIA)_(\d+)__/g;
   const parts = [];
   let lastIndex = 0;
   let match;
 
   placeholderRegex.lastIndex = 0;
   while ((match = placeholderRegex.exec(markdownParsed)) !== null) {
-    // Add text/HTML before placeholder
     if (match.index > lastIndex) {
       parts.push({ type: 'html', content: markdownParsed.slice(lastIndex, match.index) });
     }
-    // Add replacement
     const replacementIndex = parseInt(match[2]);
     parts.push(replacements[replacementIndex]);
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text/HTML
   if (lastIndex < markdownParsed.length) {
     parts.push({ type: 'html', content: markdownParsed.slice(lastIndex) });
   }
 
-  // If no placeholders, treat entire content as HTML
   if (parts.length === 0) {
     parts.push({ type: 'html', content: markdownParsed });
   }
 
   // Render parts
   const processedParts = parts.map((part, partIdx) => {
+    if (part.type === 'codeblock') {
+      const highlighted = highlightCode(part.code, part.lang);
+      return (
+        <pre key={`codeblock-${partIdx}`} className="message-codeblock">
+          {part.lang && <span className="codeblock-lang">{part.lang}</span>}
+          <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+        </pre>
+      );
+    }
+
+    if (part.type === 'inlinecode') {
+      return <code key={`inlinecode-${partIdx}`} className="message-inline-code">{part.code}</code>;
+    }
+
+    if (part.type === 'mention') {
+      return <span key={`mention-${partIdx}`} className="mention">@{part.name}</span>;
+    }
+
     if (part.type === 'mdlink') {
       return (
         <a
@@ -273,14 +409,12 @@ function processContent(message, importPath, convertFileSrc) {
     }
 
     if (part.type === 'media') {
-      // Media URLs are handled as attachments, don't render
       return null;
     }
 
     // HTML content (from markdown or plain text)
     const html = part.content;
 
-    // If it contains HTML tags, render with dangerouslySetInnerHTML
     if (html.includes('<')) {
       return <span key={`html-${partIdx}`} dangerouslySetInnerHTML={{ __html: html }} />;
     }

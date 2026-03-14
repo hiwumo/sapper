@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, FolderOpen, Download, Upload, FileText, Bell, AlertTriangle, Bug, Settings2, Palette, Database, Wrench, HardDrive, ChevronRight } from "lucide-react";
+import { X, FolderOpen, Download, Upload, FileText, Bell, AlertTriangle, Bug, Settings2, Palette, Database, Wrench, HardDrive, ChevronRight, Trash2 } from "lucide-react";
 import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -28,6 +28,8 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
   const [skipLargeImportWarning, setSkipLargeImportWarning] = useState(false);
   const [diskUsage, setDiskUsage] = useState(null);
   const [loadingDiskUsage, setLoadingDiskUsage] = useState(false);
+  const [clearingLogs, setClearingLogs] = useState(false);
+  const [confirmClearLogs, setConfirmClearLogs] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -44,6 +46,8 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
     if (isOpen) {
       fetchSettings();
+    } else {
+      setConfirmClearLogs(false);
     }
   }, [isOpen]);
 
@@ -52,6 +56,24 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
       fetchDiskUsage();
     }
   }, [isOpen, activeTab, dataSubTab]);
+
+  const handleClearLogs = async () => {
+    if (!confirmClearLogs) {
+      setConfirmClearLogs(true);
+      return;
+    }
+    setClearingLogs(true);
+    setConfirmClearLogs(false);
+    try {
+      const clearedBytes = await invoke("clear_logs");
+      toast.success(`Cleared ${formatBytes(clearedBytes)} of log files`);
+      fetchDiskUsage();
+    } catch (error) {
+      console.error("Failed to clear logs:", error);
+      toast.error(`Failed to clear logs: ${error}`);
+    }
+    setClearingLogs(false);
+  };
 
   const fetchDiskUsage = async () => {
     setLoadingDiskUsage(true);
@@ -333,7 +355,18 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
           </div>
           <div className="disk-breakdown-row">
             <span>Logs</span>
-            <span>{formatBytes(diskUsage.logsBytes)}</span>
+            <div className="disk-breakdown-row-actions">
+              <span>{formatBytes(diskUsage.logsBytes)}</span>
+              <button
+                className={`clear-logs-button ${confirmClearLogs ? "confirm" : ""}`}
+                onClick={handleClearLogs}
+                disabled={clearingLogs || diskUsage.logsBytes === 0}
+                title={confirmClearLogs ? "Click again to confirm" : "Clear all log files"}
+              >
+                <Trash2 size={14} />
+                {clearingLogs ? "Clearing..." : confirmClearLogs ? "Confirm?" : "Clear"}
+              </button>
+            </div>
           </div>
         </div>
 

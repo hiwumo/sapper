@@ -169,7 +169,7 @@ export const themes = {
       textLink: "#00aff4",
 
       // Border colors
-      borderPrimary: "#3e4147ff",
+      borderPrimary: "#202122",
       borderSecondary: "#202225",
 
       // Interactive colors

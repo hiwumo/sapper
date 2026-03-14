@@ -119,6 +119,8 @@ pub struct ImportEntry {
     pub guild_id: String,
     pub message_count: usize,
     pub avatar_path: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 // Member storage for conversations
@@ -133,6 +135,8 @@ pub struct Member {
     pub color: Option<String>, // Role color
     pub is_bot: bool,
     pub roles: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +189,8 @@ pub struct AppConfig {
     pub skip_large_import_warning: bool,
     #[serde(default)]
     pub debug_mode: bool,
+    #[serde(default)]
+    pub conversation_order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +209,7 @@ impl Default for AppConfig {
             notifications_enabled: true,
             skip_large_import_warning: false,
             debug_mode: false,
+            conversation_order: Vec::new(),
         }
     }
 }

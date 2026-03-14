@@ -9,17 +9,19 @@ import {
 import { ToastContainer as ReactToastifyContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
-import Navbar from "./components/Navbar";
-import Home from "./components/Home";
+import Sidebar from "./components/Sidebar";
 import ConversationViewer from "./components/ConversationViewer";
 import ProgressDialog from "./components/ProgressDialog";
 import ImportDialog from "./components/ImportDialog";
 import Dialog from "./components/Dialog";
+import EditDialog from "./components/EditDialog";
+import InfoDialog from "./components/InfoDialog";
 import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
 import Changelog from "./components/Changelog";
+import Guide from "./components/Guide";
 import { ToastProvider, useToast } from "./components/ToastContainer";
-import { getSavedTheme } from "./themes";
+import { getSavedTheme, themes } from "./themes";
 
 function formatBytes(bytes) {
   if (bytes === 0) return "0 B";
@@ -31,8 +33,7 @@ function formatBytes(bytes) {
 
 function AppContent() {
   const toast = useToast();
-  const [activeView, setActiveView] = useState("home");
-  const [openTabs, setOpenTabs] = useState([]);
+  const [activeView, setActiveView] = useState(null);
   const [imports, setImports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -47,8 +48,18 @@ function AppContent() {
   const [showMissingImportsDialog, setShowMissingImportsDialog] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [conversationOrder, setConversationOrder] = useState([]);
+
+  // Edit/Info dialogs
+  const [editingImport, setEditingImport] = useState(null);
+  const [infoImport, setInfoImport] = useState(null);
+  const [confirmDeleteImport, setConfirmDeleteImport] = useState(null);
+
+  // Outdated prompt
+  const [outdatedPrompt, setOutdatedPrompt] = useState(null);
 
   // Import state
   const [importState, setImportState] = useState({
@@ -71,6 +82,13 @@ function AppContent() {
     setupConsoleLogging();
   }, []);
 
+  // Apply theme CSS variables to root
+  const themeColors = themes[theme]?.colors || themes.dark.colors;
+  const themeStyle = {};
+  for (const [key, value] of Object.entries(themeColors)) {
+    themeStyle[`--${key}`] = value;
+  }
+
   function setupConsoleLogging() {
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
@@ -83,7 +101,7 @@ function AppContent() {
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      invoke("log_frontend_error", { message }).catch(() => { });
+      invoke("log_frontend_error", { message }).catch(() => {});
     };
 
     console.warn = (...args) => {
@@ -93,10 +111,9 @@ function AppContent() {
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      invoke("log_frontend_warning", { message }).catch(() => { });
+      invoke("log_frontend_warning", { message }).catch(() => {});
     };
 
-    // In debug mode, console.log also goes to trace logs
     console.log = (...args) => {
       originalConsoleLog(...args);
       const message = args
@@ -104,17 +121,17 @@ function AppContent() {
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      invoke("log_frontend_trace", { message }).catch(() => { });
+      invoke("log_frontend_trace", { message }).catch(() => {});
     };
 
     window.addEventListener("error", (event) => {
       const message = `Unhandled error: ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`;
-      invoke("log_frontend_error", { message }).catch(() => { });
+      invoke("log_frontend_error", { message }).catch(() => {});
     });
 
     window.addEventListener("unhandledrejection", (event) => {
       const message = `Unhandled promise rejection: ${event.reason}`;
-      invoke("log_frontend_error", { message }).catch(() => { });
+      invoke("log_frontend_error", { message }).catch(() => {});
     });
   }
 
@@ -137,6 +154,7 @@ function AppContent() {
 
       const config = await invoke("get_config");
       setDebugMode(config.debugMode ?? false);
+      setConversationOrder(config.conversationOrder || []);
       const lastChangelogVersion = config.lastChangelogVersion;
 
       if (!lastChangelogVersion || lastChangelogVersion !== version) {
@@ -178,9 +196,31 @@ function AppContent() {
         (imp) => !imp.compatibility.isCompatible && imp.compatibility.needsUpdate
       );
       setIncompatibleImports(incompatible);
+
+      // Load conversation order
+      const config = await invoke("get_config");
+      setConversationOrder(config.conversationOrder || []);
     } catch (error) {
       console.error("Failed to load imports:", error);
     }
+  }
+
+  // Sort imports by saved order
+  function getSortedImports() {
+    if (!conversationOrder.length) return imports;
+
+    const orderMap = {};
+    conversationOrder.forEach((id, idx) => {
+      orderMap[id] = idx;
+    });
+
+    return [...imports].sort((a, b) => {
+      const aId = a.id || a.entry?.id;
+      const bId = b.id || b.entry?.id;
+      const aIdx = orderMap[aId] ?? Infinity;
+      const bIdx = orderMap[bId] ?? Infinity;
+      return aIdx - bIdx;
+    });
   }
 
   async function sendAppNotification(title, body) {
@@ -217,7 +257,6 @@ function AppContent() {
 
       const paths = Array.isArray(selected) ? selected : [selected];
 
-      // Get previews for all files
       const filesWithPreviews = [];
       for (const path of paths) {
         try {
@@ -231,7 +270,6 @@ function AppContent() {
         }
       }
 
-      // Check total attachments size
       const totalAttachmentsSize = filesWithPreviews.reduce(
         (sum, f) => sum + (f.preview?.attachmentsSize || 0),
         0
@@ -259,7 +297,6 @@ function AppContent() {
         if (!confirmed) return;
       }
 
-      // For single file, check missing assets
       if (paths.length === 1) {
         const missingAssets = await invoke("check_missing_assets", {
           jsonPath: paths[0],
@@ -276,7 +313,6 @@ function AppContent() {
         }
       }
 
-      // Start import
       await performBulkImport(filesWithPreviews);
     } catch (error) {
       console.error("Import failed:", error);
@@ -296,7 +332,6 @@ function AppContent() {
 
     for (let i = 0; i < files.length; i++) {
       if (importCancelledRef.current) {
-        // Mark remaining as cancelled
         setImportState((prev) => ({
           ...prev,
           files: prev.files.map((f, idx) =>
@@ -306,7 +341,6 @@ function AppContent() {
         break;
       }
 
-      // Mark current as importing
       setImportState((prev) => ({
         ...prev,
         files: prev.files.map((f, idx) =>
@@ -348,10 +382,8 @@ function AppContent() {
       }
     }
 
-    // Reload imports
     await loadImports();
 
-    // Send notification
     if (importedEntries.length > 0) {
       const body =
         importedEntries.length === 1
@@ -360,9 +392,8 @@ function AppContent() {
       sendAppNotification("Import Complete", body);
     }
 
-    // If single file imported successfully, open it
     if (files.length === 1 && importedEntries.length === 1) {
-      openConversation(importedEntries[0].id);
+      setActiveView(importedEntries[0].id);
     }
   }
 
@@ -372,12 +403,10 @@ function AppContent() {
     );
 
     if (allFinished) {
-      // Just close the dialog
       setImportState({ active: false, files: [] });
       return;
     }
 
-    // Cancel in-progress import
     importCancelledRef.current = true;
     try {
       await invoke("cancel_import");
@@ -421,35 +450,60 @@ function AppContent() {
   }
 
   function openConversation(importId) {
-    const existingTab = openTabs.find((tab) => tab.id === importId);
-    if (existingTab) {
-      setActiveView(importId);
+    // Check if outdated
+    const imp = imports.find((i) => {
+      const id = i.id || i.entry?.id;
+      return id === importId;
+    });
+    if (
+      imp &&
+      !imp.compatibility?.isCompatible &&
+      imp.compatibility?.needsUpdate
+    ) {
+      setOutdatedPrompt(imp);
       return;
     }
-
-    const importEntry = imports.find((imp) => imp.id === importId);
-    if (importEntry) {
-      setOpenTabs([...openTabs, { id: importId, name: importEntry.alias }]);
-      setActiveView(importId);
-    }
+    setActiveView(importId);
   }
 
-  function closeTab(tabId) {
-    setOpenTabs(openTabs.filter((tab) => tab.id !== tabId));
-    if (activeView === tabId) {
-      setActiveView("home");
+  async function handleSingleUpdate() {
+    if (!outdatedPrompt) return;
+    const importId = outdatedPrompt.id || outdatedPrompt.entry?.id;
+    setOutdatedPrompt(null);
+
+    try {
+      setUpdating(true);
+      await invoke("batch_reimport_conversations", {
+        importIds: [importId],
+      });
+      toast.success("Conversation updated successfully");
+      await loadImports();
+      setActiveView(importId);
+    } catch (error) {
+      console.error("Update failed:", error);
+      toast.error(`Update failed: ${error}`);
+    } finally {
+      setUpdating(false);
     }
   }
 
   async function deleteImport(importId) {
+    setConfirmDeleteImport(importId);
+  }
+
+  async function confirmDelete() {
+    if (!confirmDeleteImport) return;
     try {
-      await invoke("delete_import", { importId });
+      await invoke("delete_import", { importId: confirmDeleteImport });
       await loadImports();
-      closeTab(importId);
+      if (activeView === confirmDeleteImport) {
+        setActiveView(null);
+      }
     } catch (error) {
       console.error("Unimport failed:", error);
       toast.error(`Unimport failed: ${error}`);
     }
+    setConfirmDeleteImport(null);
   }
 
   async function updateImport(updatedImport) {
@@ -457,19 +511,42 @@ function AppContent() {
       await invoke("update_import", {
         importId: updatedImport.id,
         alias: updatedImport.alias,
+        description: updatedImport.description || null,
       });
       await loadImports();
-
-      setOpenTabs(
-        openTabs.map((tab) =>
-          tab.id === updatedImport.id
-            ? { ...tab, name: updatedImport.alias }
-            : tab
-        )
-      );
+      setEditingImport(null);
     } catch (error) {
       console.error("Update failed:", error);
       toast.error(`Update failed: ${error}`);
+    }
+  }
+
+  async function exportConversation(importId) {
+    try {
+      const destPath = await open({
+        directory: true,
+        multiple: false,
+        title: "Select folder to save export",
+      });
+      if (!destPath) return;
+
+      await invoke("export_selected_conversations", {
+        destPath,
+        importIds: [importId],
+      });
+      toast.success("Conversation exported successfully");
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast.error(`Export failed: ${error}`);
+    }
+  }
+
+  async function reorderImports(orderedIds) {
+    setConversationOrder(orderedIds);
+    try {
+      await invoke("reorder_imports", { orderedIds });
+    } catch (error) {
+      console.error("Reorder failed:", error);
     }
   }
 
@@ -530,14 +607,16 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="app">
+      <div className="app" style={themeStyle}>
         <div className="loading">Loading Sapper...</div>
       </div>
     );
   }
 
+  const sortedImports = getSortedImports();
+
   return (
-    <div className="app">
+    <div className="app" style={themeStyle}>
       {updating && <ProgressDialog message="Updating conversations..." />}
 
       <ImportDialog
@@ -613,26 +692,62 @@ function AppContent() {
                 <div key={entry.id} style={{
                   padding: "0.5rem 0.75rem",
                   marginBottom: "0.25rem",
-                  background: "var(--bg-secondary, #1e1f22)",
+                  background: "var(--backgroundTertiary)",
                   borderRadius: "4px",
                   fontSize: "0.875rem",
                 }}>
-                  <div style={{ fontWeight: 500, color: "var(--text-primary, #dbdee1)" }}>{name}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted, #949ba4)", marginTop: "2px" }}>
+                  <div style={{ fontWeight: 500, color: "var(--textPrimary)" }}>{name}</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--textMuted)", marginTop: "2px" }}>
                     {entry.channelName} in {entry.guildName} &bull; {entry.messageCount.toLocaleString()} messages
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted, #949ba4)", marginTop: "2px", wordBreak: "break-all" }}>
+                  <div style={{ fontSize: "0.7rem", color: "var(--textMuted)", marginTop: "2px", wordBreak: "break-all" }}>
                     {entry.importPath}
                   </div>
                 </div>
               );
             })}
           </div>
-          <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted, #949ba4)" }}>
+          <p style={{ marginTop: "0.75rem", fontSize: "0.85rem", color: "var(--textMuted)" }}>
             You can remove these entries to clean up your list, or dismiss to keep them.
           </p>
         </div>
       </Dialog>
+
+      {/* Outdated conversation prompt */}
+      <Dialog
+        isOpen={!!outdatedPrompt}
+        onClose={() => setOutdatedPrompt(null)}
+        title="Outdated Conversation"
+        confirmText="Update Now"
+        cancelText="Cancel"
+        onConfirm={handleSingleUpdate}
+        onCancel={() => setOutdatedPrompt(null)}
+        type="default"
+      >
+        <div className="dialog-message">
+          <p>
+            This conversation needs to be updated before it can be opened. Would you like to update it now?
+          </p>
+        </div>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <Dialog
+        isOpen={!!confirmDeleteImport}
+        onClose={() => setConfirmDeleteImport(null)}
+        title="Unimport Conversation"
+        message="Are you sure you want to unimport this conversation? The original folder you imported from will remain, but our copy will be permanently erased."
+        confirmText="Unimport"
+        cancelText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmDeleteImport(null)}
+        type="danger"
+      />
+
+      <Guide
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+      />
 
       <Changelog
         isOpen={showChangelog}
@@ -640,13 +755,24 @@ function AppContent() {
         version={currentVersion}
       />
 
-      <Navbar
-        activeView={activeView}
-        openTabs={openTabs}
-        onTabClick={setActiveView}
-        onCloseTab={closeTab}
-        onSettingsClick={() => setSettingsOpen(true)}
-      />
+      {editingImport && (
+        <EditDialog
+          importEntry={editingImport}
+          onClose={() => setEditingImport(null)}
+          onSave={updateImport}
+          onUnimport={(id) => {
+            setEditingImport(null);
+            deleteImport(id);
+          }}
+        />
+      )}
+
+      {infoImport && (
+        <InfoDialog
+          importEntry={infoImport}
+          onClose={() => setInfoImport(null)}
+        />
+      )}
 
       <Settings
         isOpen={settingsOpen}
@@ -661,26 +787,41 @@ function AppContent() {
         onDebugModeChange={setDebugMode}
       />
 
-      <main className="content">
-        {activeView === "home" ? (
-          <Home
-            imports={imports}
-            onOpenConversation={openConversation}
-            onDeleteImport={deleteImport}
-            onUpdateImport={updateImport}
-            onImport={handleImport}
-            onBatchUpdate={handleBatchUpdate}
-            incompatibleCount={incompatibleImports.length}
-          />
-        ) : (
-          <ConversationViewer
-            importId={activeView}
-            theme={theme}
-            key={activeView}
-            debugMode={debugMode}
-          />
-        )}
-      </main>
+      <div className="app-layout">
+        <Sidebar
+          imports={sortedImports}
+          activeView={activeView}
+          onOpenConversation={openConversation}
+          onImport={handleImport}
+          onSettingsClick={() => setSettingsOpen(true)}
+          onEditImport={setEditingImport}
+          onDeleteImport={deleteImport}
+          onExportConversation={exportConversation}
+          onInfoClick={setInfoImport}
+          incompatibleImports={incompatibleImports}
+          onBatchUpdate={handleBatchUpdate}
+          onReorder={reorderImports}
+          onGuideClick={() => setShowGuide(true)}
+        />
+
+        <main className="content">
+          {activeView ? (
+            <ConversationViewer
+              importId={activeView}
+              theme={theme}
+              key={activeView}
+              debugMode={debugMode}
+            />
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-content">
+                <h2 className="title">Welcome to Sapper</h2>
+                <p>Select a conversation from the sidebar or import a new one.</p>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

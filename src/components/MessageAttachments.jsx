@@ -371,7 +371,7 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
             <X size={32} />
           </button>
 
-          <div className="carousel-content" onClick={(e) => e.stopPropagation()}>
+          <div className="carousel-content">
             {images.length > 1 && (
               <button className="carousel-button carousel-prev" onClick={prevImage}>
                 <ChevronLeft size={40} />

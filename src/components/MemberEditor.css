@@ -175,6 +175,48 @@
   color: #888888;
 }
 
+.member-visibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+
+.visibility-switch {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #4a9eff;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.visibility-switch.hidden-active {
+  background: #555555;
+}
+
+.visibility-switch-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+}
+
+.visibility-switch.hidden-active .visibility-switch-knob {
+  transform: translateX(18px);
+}
+
+.visibility-label {
+  font-size: 0.9rem;
+  color: #cccccc;
+}
+
 .member-badge {
   margin: 1rem 0;
 }

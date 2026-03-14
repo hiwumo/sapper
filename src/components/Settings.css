@@ -327,6 +327,51 @@
   color: #ddd;
 }
 
+.disk-breakdown-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.disk-breakdown-row-actions span {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ddd;
+}
+
+.clear-logs-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  background: transparent;
+  color: #999;
+  border: 1px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clear-logs-button:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.clear-logs-button.confirm {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+}
+
+.clear-logs-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .disk-conversations {
   display: flex;
   flex-direction: column;

@@ -50,10 +50,38 @@ body {
   width: 100vw;
 }
 
+.app-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .content {
   flex: 1;
   overflow: hidden;
-  background: #0f0f0f;
+  background: var(--background, #0f0f0f);
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.empty-state-content {
+  text-align: center;
+}
+
+.empty-state-content h2 {
+  color: var(--textPrimary, #fff);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-content p {
+  color: var(--textMuted, #888);
+  font-size: 0.95rem;
 }
 
 .loading {

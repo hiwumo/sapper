@@ -27,6 +27,16 @@ const CHANGELOG = {
     date: "2026-03-14",
     changes: [
       {
+        type: "feature",
+        title: "Brand new UI !!",
+        description: "Merged conversations page, and a lovely new settings modal",
+      },
+      {
+        type: "feature",
+        title: "In-app Guide",
+        description: "Click the question mark on the top-left for a quick explanation to anything",
+      },
+      {
         type: "improvement",
         title: "Better Video and Audio player",
         description: "It should look way better to play now ^-^",
@@ -34,7 +44,7 @@ const CHANGELOG = {
       {
         type: "improvement",
         title: "Improved Search and Message Loading",
-        description: "Substantially better and faster searching!",
+        description: "You'll actually see what you searched for now",
       },
       {
         type: "fix",

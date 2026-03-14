@@ -196,13 +196,25 @@ fn delete_import(state: State<AppState>, import_id: String) -> Result<(), String
 }
 
 #[tauri::command]
-fn update_import(state: State<AppState>, import_id: String, alias: String) -> Result<(), String> {
+fn update_import(state: State<AppState>, import_id: String, alias: String, description: Option<String>) -> Result<(), String> {
     info!("Updating import {} with new alias", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    core.update_import_alias(&import_id, alias).map_err(|e| {
+    core.update_import_alias(&import_id, alias, description).map_err(|e| {
         error!("Failed to update import {}: {}", logger::sanitize_string(&import_id), e);
+        e.to_string()
+    })
+}
+
+#[tauri::command]
+fn reorder_imports(state: State<AppState>, ordered_ids: Vec<String>) -> Result<(), String> {
+    info!("Reordering {} imports", ordered_ids.len());
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    core.reorder_imports(ordered_ids).map_err(|e| {
+        error!("Failed to reorder imports: {}", e);
         e.to_string()
     })
 }
@@ -434,12 +446,13 @@ fn update_member(
     import_id: String,
     member_id: String,
     nickname: Option<String>,
-    avatar_url: Option<String>
+    avatar_url: Option<String>,
+    hidden: Option<bool>
 ) -> Result<(), String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    core.update_member(&import_id, &member_id, nickname, avatar_url).map_err(|e| e.to_string())
+    core.update_member(&import_id, &member_id, nickname, avatar_url, hidden).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -629,6 +642,32 @@ fn get_disk_usage(state: State<AppState>) -> Result<models::AppDiskUsage, String
         logs_bytes,
         conversations,
     })
+}
+
+#[tauri::command]
+fn clear_logs(state: State<AppState>) -> Result<u64, String> {
+    let log_dir = &state.log_dir;
+
+    if !log_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut cleared_bytes: u64 = 0;
+
+    for entry in std::fs::read_dir(log_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Ok(meta) = path.metadata() {
+                cleared_bytes += meta.len();
+            }
+            std::fs::remove_file(&path).map_err(|e| format!("Failed to remove {}: {}", path.display(), e))?;
+        }
+    }
+
+    info!("Cleared {} bytes of log files, starting fresh logs", cleared_bytes);
+
+    Ok(cleared_bytes)
 }
 
 #[tauri::command]
@@ -1005,7 +1044,9 @@ pub fn run() {
                 batch_reimport_conversations,
                 cancel_import,
                 get_import_preview,
-                get_disk_usage
+                get_disk_usage,
+                clear_logs,
+                reorder_imports
             ]
         )
         .run(tauri::generate_context!())

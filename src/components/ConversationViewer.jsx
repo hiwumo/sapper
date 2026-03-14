@@ -14,6 +14,13 @@ const MESSAGES_PER_PAGE = 50;
 const MAX_RENDERED_MESSAGES = 150;
 const SEARCH_RESULTS_PER_PAGE = 10;
 
+const LOADING_QUOTES = [
+  "Dusting off your old memories...",
+  "Packaging a chatlog...",
+  "Applying sap...",
+  "Imma load this someday..."
+];
+
 function formatBytes(bytes) {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -49,6 +56,8 @@ function ConversationViewer({ importId, theme, debugMode }) {
   const [chunkDebugExpanded, setChunkDebugExpanded] = useState(false);
   const [afterTimestamp, setAfterTimestamp] = useState(null);
   const [beforeTimestamp, setBeforeTimestamp] = useState(null);
+  const [memberContextMenu, setMemberContextMenu] = useState(null);
+  const [showHiddenMembers, setShowHiddenMembers] = useState(false);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -107,6 +116,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
               color: m.color,
               discriminator: m.discriminator,
               isBot: m.isBot,
+              hidden: m.hidden || false,
             }));
           setMembers(sortedMembers);
         }
@@ -123,6 +133,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
               color: msg.author.color,
               discriminator: msg.author.discriminator,
               isBot: msg.author.isBot,
+              hidden: false,
             });
           }
         });
@@ -580,10 +591,17 @@ function ConversationViewer({ importId, theme, debugMode }) {
     }
   }
 
+  const [loadingQuote] = useState(() =>
+    LOADING_QUOTES[Math.floor(Math.random() * LOADING_QUOTES.length)]
+  );
+
   if (loading) {
     return (
       <div className="conversation-viewer">
-        <div className="loading-state">Loading conversation...</div>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          <div className="loading-quote">{loadingQuote}</div>
+        </div>
       </div>
     );
   }
@@ -954,16 +972,24 @@ function ConversationViewer({ importId, theme, debugMode }) {
           ) : (
             <>
               <div className="member-list-header">
-                Members—{members.length}
+                Members—{members.filter(m => !m.hidden).length}
               </div>
               <div className={`member-list-content ${debugMode && chunkDebugInfo ? "member-list-split" : ""}`}>
-                {members.map((member, idx) => (
+                {members.filter(m => !m.hidden).map((member, idx) => (
                   <div
                     key={idx}
                     className="member-item clickable"
                     onClick={() => {
                       setSelectedMember(member);
                       setMemberEditorOpen(true);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMemberContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        member,
+                      });
                     }}
                     title="Click to edit member"
                   >
@@ -977,6 +1003,48 @@ function ConversationViewer({ importId, theme, debugMode }) {
                     </span>
                   </div>
                 ))}
+
+                {/* Hidden members section */}
+                {showHiddenMembers && members.filter(m => m.hidden).map((member, idx) => (
+                  <div
+                    key={`hidden-${idx}`}
+                    className="member-item clickable member-item-hidden"
+                    onClick={() => {
+                      setSelectedMember(member);
+                      setMemberEditorOpen(true);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMemberContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        member,
+                      });
+                    }}
+                    title="Click to edit member"
+                  >
+                    <MessageAvatar
+                      avatarUrl={member.avatar}
+                      name={member.name}
+                      importPath={importPath}
+                    />
+                    <span className="member-name">
+                      {member.name}
+                    </span>
+                  </div>
+                ))}
+
+                {/* Hidden count indicator */}
+                {members.filter(m => m.hidden).length > 0 && (
+                  <div
+                    className="member-hidden-indicator"
+                    onClick={() => setShowHiddenMembers(!showHiddenMembers)}
+                  >
+                    {showHiddenMembers
+                      ? "Hide hidden members"
+                      : `${members.filter(m => m.hidden).length} hidden`}
+                  </div>
+                )}
               </div>
 
               {/* Chunk Debug Panel - only visible in debug mode */}
@@ -1058,6 +1126,65 @@ function ConversationViewer({ importId, theme, debugMode }) {
         </div>
       )}
 
+      {/* Member Context Menu */}
+      {memberContextMenu && (
+        <div className="member-context-overlay" onClick={() => setMemberContextMenu(null)}>
+          <div
+            className="member-context-menu"
+            style={{ top: memberContextMenu.y, left: memberContextMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="member-context-item"
+              onClick={() => {
+                setSelectedMember(memberContextMenu.member);
+                setMemberEditorOpen(true);
+                setMemberContextMenu(null);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              className="member-context-item"
+              onClick={async () => {
+                const member = memberContextMenu.member;
+                try {
+                  await invoke("update_member", {
+                    importId,
+                    memberId: member.id,
+                    nickname: null,
+                    avatarUrl: null,
+                    hidden: !member.hidden,
+                  });
+                  // Reload members
+                  const result = await invoke("get_members", { importId });
+                  if (result && result.members) {
+                    const sortedMembers = result.members
+                      .sort((a, b) => a.id.localeCompare(b.id))
+                      .map(m => ({
+                        id: m.id,
+                        name: m.nickname,
+                        avatar: m.avatarUrl,
+                        color: m.color,
+                        discriminator: m.discriminator,
+                        isBot: m.isBot,
+                        hidden: m.hidden || false,
+                      }));
+                    setMembers(sortedMembers);
+                  }
+                } catch (error) {
+                  console.error("Failed to toggle member visibility:", error);
+                  toast.error(`Failed to update member: ${error}`);
+                }
+                setMemberContextMenu(null);
+              }}
+            >
+              {memberContextMenu.member.hidden ? "Show" : "Hide"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <MemberEditor
         isOpen={memberEditorOpen}
         onClose={() => {
@@ -1081,6 +1208,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
                   color: m.color,
                   discriminator: m.discriminator,
                   isBot: m.isBot,
+                  hidden: m.hidden || false,
                 }));
               setMembers(sortedMembers);
             }

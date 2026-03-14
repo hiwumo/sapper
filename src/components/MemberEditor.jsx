@@ -10,12 +10,14 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
   const toast = useToast();
   const [nickname, setNickname] = useState("");
   const [avatarPath, setAvatarPath] = useState("");
+  const [hidden, setHidden] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (member) {
       setNickname(member.name || "");
       setAvatarPath(member.avatar || "");
+      setHidden(member.hidden || false);
     }
   }, [member]);
 
@@ -31,6 +33,7 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
         memberId: member.id,
         nickname: nickname !== member.name ? nickname : null,
         avatarUrl: avatarPath !== member.avatar ? avatarPath : null,
+        hidden: hidden !== (member.hidden || false) ? hidden : null,
       });
 
       // Notify parent to reload
@@ -135,6 +138,21 @@ function MemberEditor({ isOpen, onClose, member, importId, importPath, onUpdate 
             <span className="field-description">
               This name will be shown in all messages from this user
             </span>
+          </div>
+
+          <div className="member-field">
+            <label>Visibility</label>
+            <div
+              className="member-visibility-toggle"
+              onClick={() => setHidden(!hidden)}
+            >
+              <div className={`visibility-switch ${hidden ? "hidden-active" : ""}`}>
+                <div className="visibility-switch-knob" />
+              </div>
+              <span className="visibility-label">
+                {hidden ? "Hidden from member list" : "Visible in member list"}
+              </span>
+            </div>
           </div>
 
           {member.isBot && (

@@ -203,6 +203,7 @@ impl SapperCore {
             guild_id: export_data.guild.id.clone(),
             message_count: export_data.messages.len(),
             avatar_path,
+            description: String::new(),
         };
 
         let mut metadata = self.load_metadata()?;
@@ -405,16 +406,26 @@ impl SapperCore {
         Ok(())
     }
 
-    pub fn update_import_alias(&self, import_id: &str, new_alias: String) -> io::Result<()> {
+    pub fn update_import_alias(&self, import_id: &str, new_alias: String, new_description: Option<String>) -> io::Result<()> {
         let mut metadata = self.load_metadata()?;
 
         if let Some(entry) = metadata.imports.iter_mut().find(|e| e.id == import_id) {
             entry.alias = new_alias;
+            if let Some(desc) = new_description {
+                entry.description = desc;
+            }
             self.save_metadata(&metadata)?;
         } else {
             return Err(io::Error::new(io::ErrorKind::NotFound, "Import not found"));
         }
 
+        Ok(())
+    }
+
+    pub fn reorder_imports(&self, ordered_ids: Vec<String>) -> io::Result<()> {
+        let mut config = self.load_config()?;
+        config.conversation_order = ordered_ids;
+        self.save_config(&config)?;
         Ok(())
     }
 
@@ -438,6 +449,7 @@ impl SapperCore {
                     color: msg.author.color.clone(),
                     is_bot: msg.author.is_bot,
                     roles: msg.author.roles.clone(),
+                    hidden: false,
                 });
             }
         }
@@ -562,7 +574,8 @@ impl SapperCore {
         import_id: &str,
         member_id: &str,
         nickname: Option<String>,
-        avatar_url: Option<String>
+        avatar_url: Option<String>,
+        hidden: Option<bool>
     ) -> io::Result<()> {
         let metadata = self.load_metadata()?;
         let import_entry = metadata.imports
@@ -579,6 +592,9 @@ impl SapperCore {
             }
             if let Some(avatar) = avatar_url {
                 member.avatar_url = avatar;
+            }
+            if let Some(h) = hidden {
+                member.hidden = h;
             }
 
             // Update last_updated timestamp

@@ -13,22 +13,26 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
     return `${imp.channelName} in ${imp.guildName}`;
   };
 
-  const [alias, setAlias] = useState(importEntry?.alias || "");
+  const entry = importEntry?.entry || importEntry;
+  const [alias, setAlias] = useState(entry?.alias || "");
+  const [description, setDescription] = useState(entry?.description || "");
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
     if (importEntry) {
-      setAlias(importEntry.alias || "");
+      const e = importEntry.entry || importEntry;
+      setAlias(e.alias || "");
+      setDescription(e.description || "");
     }
   }, [importEntry]);
 
   if (!importEntry) return null;
 
-  const defaultName = getDefaultName(importEntry);
+  const defaultName = getDefaultName(entry);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...importEntry, alias: alias.trim() || defaultName });
+    onSave({ ...entry, alias: alias.trim() || defaultName, description: description.trim() });
   };
 
   const handleUnimport = () => {
@@ -36,14 +40,14 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
   };
 
   const confirmUnimport = () => {
-    onUnimport(importEntry.id);
+    onUnimport(entry.id);
     onClose();
   };
 
   const infoRows = [
-    { label: "Channel", value: importEntry.channelName },
-    { label: "Guild", value: importEntry.guildName },
-    { label: "Messages", value: importEntry.messageCount.toLocaleString() },
+    { label: "Channel", value: entry.channelName },
+    { label: "Guild", value: entry.guildName },
+    { label: "Messages", value: entry.messageCount.toLocaleString() },
   ];
 
   return (
@@ -67,6 +71,30 @@ function EditDialog({ importEntry, onClose, onSave, onUnimport }) {
               hint={`Default: ${defaultName}`}
               autoFocus={true}
             />
+            <div className="form-group" style={{ marginTop: "1rem" }}>
+              <label htmlFor="description" className="form-label" style={{ display: "block", marginBottom: "0.4rem", fontSize: "0.85rem", color: "#aaa", fontWeight: 500 }}>
+                Description
+              </label>
+              <textarea
+                id="description"
+                className="form-textarea"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a description..."
+                rows={2}
+                style={{
+                  width: "100%",
+                  background: "#2a2a2a",
+                  border: "1px solid #3a3a3a",
+                  borderRadius: "6px",
+                  color: "#fff",
+                  padding: "0.6rem",
+                  fontSize: "0.9rem",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
             <InfoSection rows={infoRows} />
           </div>
 
