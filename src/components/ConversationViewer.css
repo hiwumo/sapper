@@ -685,6 +685,21 @@
   overflow: hidden;
 }
 
+/* Giphy Embed */
+.message-giphy-embed {
+  display: block;
+  margin: 0.5rem 0;
+  max-width: 300px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.message-giphy-embed iframe {
+  border: none;
+  border-radius: 8px;
+}
+
 .message-link {
   color: #00b0f4;
   text-decoration: none;

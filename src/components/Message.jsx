@@ -4,6 +4,7 @@ import MessageStickers from "./MessageStickers";
 import MessageAttachments from "./MessageAttachments";
 import MessageEmbeds from "./MessageEmbeds";
 import TenorEmbed from "./TenorEmbed";
+import GiphyEmbed from "./GiphyEmbed";
 
 /**
  * Build a usable URL for an emoji image reported in message.inlineEmojis.
@@ -78,6 +79,47 @@ function isOnlyTenorUrl(content) {
   if (match) {
     const url = match[1];
     const gifId = extractTenorGifId(url);
+    if (gifId) {
+      return { url, gifId };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if URL is a Giphy GIF link and extract the GIF ID
+ */
+function extractGiphyGifId(url) {
+  if (!url || typeof url !== 'string') return null;
+
+  // https://giphy.com/gifs/optional-slug-GIFID
+  const giphyRegex = /^https?:\/\/(www\.)?giphy\.com\/gifs\/(?:.*-)?([a-zA-Z0-9]+)$/;
+  // https://media.giphy.com/media/GIFID/giphy.gif (and variants)
+  const mediaRegex = /^https?:\/\/media[0-9]?\.giphy\.com\/media\/([a-zA-Z0-9]+)\//;
+
+  let match = url.match(giphyRegex);
+  if (match) return match[2];
+
+  match = url.match(mediaRegex);
+  if (match) return match[1];
+
+  return null;
+}
+
+/**
+ * Check if message content is ONLY a Giphy GIF URL
+ */
+function isOnlyGiphyUrl(content) {
+  if (!content || typeof content !== 'string') return null;
+
+  const trimmed = content.trim();
+  const urlRegex = /^(https?:\/\/[^\s]+)$/;
+  const match = trimmed.match(urlRegex);
+
+  if (match) {
+    const url = match[1];
+    const gifId = extractGiphyGifId(url);
     if (gifId) {
       return { url, gifId };
     }
@@ -308,10 +350,11 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     );
   }
 
-  // Check if message content is ONLY a direct image/gif URL or Tenor URL
+  // Check if message content is ONLY a direct image/gif URL, Tenor URL, or Giphy URL
   const onlyImageUrl = isOnlyImageUrl(message.content);
   const onlyTenorUrl = isOnlyTenorUrl(message.content);
-  const shouldHideContent = onlyImageUrl !== null || onlyTenorUrl !== null;
+  const onlyGiphyUrl = isOnlyGiphyUrl(message.content);
+  const shouldHideContent = onlyImageUrl !== null || onlyTenorUrl !== null || onlyGiphyUrl !== null;
 
   // When content is just a URL (image/tenor), check if embeds have a local thumbnail
   // that we should use instead of the remote URL (which may be expired or blocked)
@@ -319,7 +362,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
   let resolvedIsVideo = false;
   let hasLocalGif = false;
 
-  if ((onlyImageUrl || onlyTenorUrl) && message.embeds?.length > 0) {
+  if ((onlyImageUrl || onlyTenorUrl || onlyGiphyUrl) && message.embeds?.length > 0) {
     for (const embed of message.embeds) {
       // Check for local thumbnail (GIF) or video (Tenor stores as MP4)
       const localThumb = embed.thumbnail?.url && !/^https?:\/\//.test(embed.thumbnail.url)
@@ -373,6 +416,9 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         {onlyTenorUrl && !hasLocalGif && (
           <TenorEmbed gifId={onlyTenorUrl.gifId} url={onlyTenorUrl.url} />
         )}
+        {onlyGiphyUrl && !hasLocalGif && (
+          <GiphyEmbed gifId={onlyGiphyUrl.gifId} url={onlyGiphyUrl.url} />
+        )}
         <MessageStickers
           stickers={message.stickers}
           importPath={importPath}
@@ -384,7 +430,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           directImageUrl={resolvedDirectUrl}
           directIsVideo={resolvedIsVideo}
         />
-        {!onlyTenorUrl && !hasLocalGif && (
+        {!onlyTenorUrl && !onlyGiphyUrl && !hasLocalGif && (
           <MessageEmbeds
             embeds={message.embeds}
             importPath={importPath}
