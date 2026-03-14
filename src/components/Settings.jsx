@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, FolderOpen, Download, Upload, FileText } from "lucide-react";
+import { X, FolderOpen, Download, Upload, FileText, Bell, AlertTriangle } from "lucide-react";
 import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -14,19 +14,24 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
   const [isExporting, setIsExporting] = useState(false);
   const [importQueue, setImportQueue] = useState([]);
   const [appVersion, setAppVersion] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [skipLargeImportWarning, setSkipLargeImportWarning] = useState(false);
 
   useEffect(() => {
-    const fetchVersion = async () => {
+    const fetchSettings = async () => {
       try {
         const version = await invoke("get_app_version");
         setAppVersion(version);
+        const config = await invoke("get_config");
+        setNotificationsEnabled(config.notificationsEnabled ?? true);
+        setSkipLargeImportWarning(config.skipLargeImportWarning ?? false);
       } catch (error) {
-        console.error("Failed to fetch app version:", error);
+        console.error("Failed to fetch settings:", error);
       }
     };
 
     if (isOpen) {
-      fetchVersion();
+      fetchSettings();
     }
   }, [isOpen]);
 
@@ -321,6 +326,69 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
               <Upload size={20} />
               Import Backup
             </button>
+          </div>
+
+          <div className="settings-section">
+            <h3>Notifications & Imports</h3>
+            <p className="settings-description">
+              Configure notification and import behavior
+            </p>
+
+            <div className="settings-toggle-list">
+              <label className="settings-toggle">
+                <div className="toggle-info">
+                  <Bell size={18} />
+                  <div>
+                    <span className="toggle-label">Desktop Notifications</span>
+                    <span className="toggle-description">
+                      Show notifications when imports or updates complete
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notificationsEnabled}
+                  onChange={async (e) => {
+                    const val = e.target.checked;
+                    setNotificationsEnabled(val);
+                    try {
+                      const config = await invoke("get_config");
+                      config.notificationsEnabled = val;
+                      await invoke("update_config", { config });
+                    } catch (err) {
+                      console.error("Failed to save notification setting:", err);
+                    }
+                  }}
+                />
+              </label>
+
+              <label className="settings-toggle">
+                <div className="toggle-info">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <span className="toggle-label">Skip Large Import Warning</span>
+                    <span className="toggle-description">
+                      Don't warn when attachments exceed 3 GB
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={skipLargeImportWarning}
+                  onChange={async (e) => {
+                    const val = e.target.checked;
+                    setSkipLargeImportWarning(val);
+                    try {
+                      const config = await invoke("get_config");
+                      config.skipLargeImportWarning = val;
+                      await invoke("update_config", { config });
+                    } catch (err) {
+                      console.error("Failed to save import warning setting:", err);
+                    }
+                  }}
+                />
+              </label>
+            </div>
           </div>
 
           <div className="settings-section">

@@ -30,7 +30,7 @@ pub const VERSION_HISTORY: &[VersionLink] = &[
         from: "0.3.1",
         to: "0.4.0",
         compatibility: CompatibilityStatus::Incompatible,
-    }
+    },
 ];
 
 /// Current version of the import format
@@ -64,15 +64,12 @@ pub fn check_compatibility(import_version: &str, current_version: &str) -> (bool
 /// Find a path from start_version to end_version
 /// Returns (path_exists, has_incompatible_link)
 fn find_version_path(start: &str, end: &str) -> (bool, bool) {
-    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::collections::{ HashMap, HashSet, VecDeque };
 
     // Build adjacency list
     let mut graph: HashMap<&str, Vec<(&str, CompatibilityStatus)>> = HashMap::new();
     for link in VERSION_HISTORY {
-        graph
-            .entry(link.from)
-            .or_insert_with(Vec::new)
-            .push((link.to, link.compatibility.clone()));
+        graph.entry(link.from).or_insert_with(Vec::new).push((link.to, link.compatibility.clone()));
     }
 
     // BFS to find path

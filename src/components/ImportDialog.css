@@ -1,0 +1,349 @@
+.import-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: importFadeIn 0.15s ease;
+}
+
+@keyframes importFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.import-dialog {
+  background: #2f3136;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: importSlideUp 0.2s ease;
+  overflow: hidden;
+}
+
+@keyframes importSlideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.import-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #202225;
+}
+
+.import-dialog-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.import-dialog-close {
+  background: none;
+  border: none;
+  color: #b9bbbe;
+  cursor: pointer;
+  padding: 0.4rem;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.import-dialog-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.import-dialog-content {
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.import-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.import-file-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.import-file-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.import-file-list::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 3px;
+}
+
+.import-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: #36393f;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.import-file-item.importing {
+  border-color: #0066cc;
+}
+
+.import-file-item.done {
+  border-color: rgba(67, 181, 129, 0.3);
+}
+
+.import-file-item.failed {
+  border-color: rgba(237, 66, 69, 0.3);
+}
+
+.import-file-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.status-icon.done {
+  color: #43b581;
+}
+
+.status-icon.importing {
+  color: #0066cc;
+  animation: spin 1s linear infinite;
+}
+
+.status-icon.failed {
+  color: #ed4245;
+}
+
+.status-icon.cancelled {
+  color: #b9bbbe;
+}
+
+.status-icon.pending {
+  color: #72767d;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.import-file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.import-file-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #dcddde;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-file-details {
+  font-size: 0.78rem;
+  color: #72767d;
+}
+
+.import-file-error {
+  font-size: 0.78rem;
+  color: #ed4245;
+}
+
+.import-file-status {
+  flex-shrink: 0;
+}
+
+.import-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.import-status-badge.done {
+  background: rgba(67, 181, 129, 0.15);
+  color: #43b581;
+}
+
+.import-status-badge.importing {
+  background: rgba(0, 102, 204, 0.15);
+  color: #4a9eff;
+}
+
+.import-status-badge.failed {
+  background: rgba(237, 66, 69, 0.15);
+  color: #ed4245;
+}
+
+.import-status-badge.cancelled {
+  background: rgba(185, 187, 190, 0.1);
+  color: #72767d;
+}
+
+.import-status-badge.pending {
+  background: rgba(185, 187, 190, 0.08);
+  color: #72767d;
+}
+
+.import-tab-hint {
+  font-size: 0.82rem;
+  color: #72767d;
+  text-align: center;
+  margin: 0 0 0.75rem 0;
+  font-style: italic;
+}
+
+.import-current-progress {
+  margin-bottom: 0.75rem;
+}
+
+.import-progress-label {
+  font-size: 0.82rem;
+  color: #b9bbbe;
+  margin-bottom: 0.4rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-progress-bar-container {
+  height: 6px;
+  background: #202225;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.import-progress-bar-container.overall {
+  height: 8px;
+  border-radius: 4px;
+}
+
+.import-progress-bar-fill {
+  height: 100%;
+  background: #0066cc;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.import-overall-progress {
+  margin-bottom: 0.5rem;
+}
+
+.import-overall-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: #b9bbbe;
+  margin-bottom: 0.4rem;
+}
+
+.import-overall-percent {
+  color: #dcddde;
+  font-weight: 500;
+}
+
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #36393f;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+
+.summary-item {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.summary-item.success {
+  color: #43b581;
+}
+
+.summary-item.failed {
+  color: #ed4245;
+}
+
+.summary-item.cancelled {
+  color: #72767d;
+}
+
+.import-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.85rem 1.5rem;
+  background: #202225;
+}
+
+.import-dialog-btn {
+  padding: 0.6rem 1.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+
+.import-dialog-btn.cancel {
+  background: #ed4245;
+  color: white;
+}
+
+.import-dialog-btn.cancel:hover {
+  background: #d83c3e;
+}
+
+.import-dialog-btn.close {
+  background: #5865f2;
+  color: white;
+}
+
+.import-dialog-btn.close:hover {
+  background: #4752c4;
+}

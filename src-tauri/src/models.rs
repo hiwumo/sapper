@@ -1,4 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
+
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,11 +125,11 @@ pub struct ImportEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
-    pub id: String,            // Discord user ID
-    pub name: String,          // Original username
+    pub id: String, // Discord user ID
+    pub name: String, // Original username
     pub discriminator: String, // Discord discriminator (e.g., "0001")
-    pub nickname: String,      // Display name (editable)
-    pub avatar_url: String,    // Path to avatar file (editable)
+    pub nickname: String, // Display name (editable)
+    pub avatar_url: String, // Path to avatar file (editable)
     pub color: Option<String>, // Role color
     pub is_bot: bool,
     pub roles: Vec<serde_json::Value>,
@@ -175,6 +179,10 @@ pub struct AppConfig {
     pub conversation_positions: std::collections::HashMap<String, ConversationPosition>,
     #[serde(default)]
     pub last_changelog_version: Option<String>,
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
+    #[serde(default)]
+    pub skip_large_import_warning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,8 +198,22 @@ impl Default for AppConfig {
             last_opened_chat: None,
             conversation_positions: std::collections::HashMap::new(),
             last_changelog_version: None,
+            notifications_enabled: true,
+            skip_large_import_warning: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPreview {
+    pub file_name: String,
+    pub channel_name: String,
+    pub guild_name: String,
+    pub guild_id: String,
+    pub message_count: usize,
+    pub json_size: u64,
+    pub attachments_size: u64,
 }
 
 // Import backup result structures

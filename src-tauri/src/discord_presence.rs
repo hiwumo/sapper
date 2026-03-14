@@ -1,6 +1,6 @@
-use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
-use std::sync::{Arc, Mutex};
-use tracing::{error, info, warn};
+use discord_rich_presence::{ activity, DiscordIpc, DiscordIpcClient };
+use std::sync::{ Arc, Mutex };
+use tracing::{ error, info, warn };
 
 pub struct DiscordPresence {
     client: Arc<Mutex<Option<DiscordIpcClient>>>,
@@ -28,8 +28,7 @@ impl DiscordPresence {
                     info!("Successfully connected to Discord Rich Presence");
 
                     // Set initial activity
-                    let activity = activity::Activity::new()
-                        .state("Playing Sapper");
+                    let activity = activity::Activity::new().state("Playing Sapper");
 
                     if let Err(e) = discord_client.set_activity(activity) {
                         error!("Failed to set Discord activity: {}", e);
@@ -50,8 +49,7 @@ impl DiscordPresence {
     /// Update the activity to show "Reading a Conversation"
     pub fn set_reading_conversation(&self, conversation_name: Option<&str>) {
         if let Some(ref mut client) = *self.client.lock().unwrap() {
-            let mut activity = activity::Activity::new()
-                .state("Reading a Conversation");
+            let mut activity = activity::Activity::new().state("Reading a Conversation");
 
             if let Some(name) = conversation_name {
                 activity = activity.details(name);
@@ -66,8 +64,7 @@ impl DiscordPresence {
     /// Update the activity back to "Playing Sapper"
     pub fn set_idle(&self) {
         if let Some(ref mut client) = *self.client.lock().unwrap() {
-            let activity = activity::Activity::new()
-                .state("Playing Sapper");
+            let activity = activity::Activity::new().state("Playing Sapper");
 
             if let Err(e) = client.set_activity(activity) {
                 error!("Failed to update Discord activity: {}", e);

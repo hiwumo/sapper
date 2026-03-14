@@ -1,6 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { ToastContainer as ReactToastifyContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
@@ -8,11 +13,21 @@ import Navbar from "./components/Navbar";
 import Home from "./components/Home";
 import ConversationViewer from "./components/ConversationViewer";
 import ProgressDialog from "./components/ProgressDialog";
+import ImportDialog from "./components/ImportDialog";
+import Dialog from "./components/Dialog";
 import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
 import Changelog from "./components/Changelog";
 import { ToastProvider, useToast } from "./components/ToastContainer";
 import { getSavedTheme } from "./themes";
+
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
 
 function AppContent() {
   const toast = useToast();
@@ -20,7 +35,6 @@ function AppContent() {
   const [openTabs, setOpenTabs] = useState([]);
   const [imports, setImports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState(getSavedTheme());
   const [missingAssetsDialog, setMissingAssetsDialog] = useState({
@@ -33,45 +47,59 @@ function AppContent() {
   const [showChangelog, setShowChangelog] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
 
+  // Import state
+  const [importState, setImportState] = useState({
+    active: false,
+    files: [],
+  });
+  const importCancelledRef = useRef(false);
+
+  // Size warning dialog
+  const [sizeWarning, setSizeWarning] = useState({
+    isOpen: false,
+    totalSize: 0,
+    attachmentsSize: 0,
+    dontAskAgain: false,
+    resolve: null,
+  });
+
   useEffect(() => {
     initApp();
     setupConsoleLogging();
   }, []);
 
   function setupConsoleLogging() {
-    // Store original console methods
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
-    const originalConsoleLog = console.log;
 
-    // Override console.error to also log to Rust backend
     console.error = (...args) => {
       originalConsoleError(...args);
-      const message = args.map(arg =>
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ');
-      invoke("log_frontend_error", { message }).catch(() => {});
+      const message = args
+        .map((arg) =>
+          typeof arg === "object" ? JSON.stringify(arg) : String(arg)
+        )
+        .join(" ");
+      invoke("log_frontend_error", { message }).catch(() => { });
     };
 
-    // Override console.warn to also log to Rust backend
     console.warn = (...args) => {
       originalConsoleWarn(...args);
-      const message = args.map(arg =>
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ');
-      invoke("log_frontend_warning", { message }).catch(() => {});
+      const message = args
+        .map((arg) =>
+          typeof arg === "object" ? JSON.stringify(arg) : String(arg)
+        )
+        .join(" ");
+      invoke("log_frontend_warning", { message }).catch(() => { });
     };
 
-    // Also capture unhandled errors
-    window.addEventListener('error', (event) => {
+    window.addEventListener("error", (event) => {
       const message = `Unhandled error: ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`;
-      invoke("log_frontend_error", { message }).catch(() => {});
+      invoke("log_frontend_error", { message }).catch(() => { });
     });
 
-    // Capture unhandled promise rejections
-    window.addEventListener('unhandledrejection', (event) => {
+    window.addEventListener("unhandledrejection", (event) => {
       const message = `Unhandled promise rejection: ${event.reason}`;
-      invoke("log_frontend_error", { message }).catch(() => {});
+      invoke("log_frontend_error", { message }).catch(() => { });
     });
   }
 
@@ -95,7 +123,6 @@ function AppContent() {
       const config = await invoke("get_config");
       const lastChangelogVersion = config.lastChangelogVersion;
 
-      // Show changelog if version is different from last shown
       if (!lastChangelogVersion || lastChangelogVersion !== version) {
         setShowChangelog(true);
       }
@@ -122,23 +149,37 @@ function AppContent() {
       console.log("imports list with compatibility:", importsList);
       setImports(importsList);
 
-      // Check for incompatible imports
       const incompatible = importsList.filter(
         (imp) => !imp.compatibility.isCompatible && imp.compatibility.needsUpdate
       );
-      if (incompatible.length > 0) {
-        console.log("incompatible:", incompatible);
-        setIncompatibleImports(incompatible);
-      }
+      setIncompatibleImports(incompatible);
     } catch (error) {
       console.error("Failed to load imports:", error);
+    }
+  }
+
+  async function sendAppNotification(title, body) {
+    try {
+      const config = await invoke("get_config");
+      if (!config.notificationsEnabled) return;
+
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        const permission = await requestPermission();
+        granted = permission === "granted";
+      }
+      if (granted) {
+        sendNotification({ title, body });
+      }
+    } catch (error) {
+      console.error("Failed to send notification:", error);
     }
   }
 
   async function handleImport() {
     try {
       const selected = await open({
-        multiple: false,
+        multiple: true,
         filters: [
           {
             name: "JSON",
@@ -147,50 +188,199 @@ function AppContent() {
         ],
       });
 
-      if (selected) {
-        // Check for missing assets first
+      if (!selected || selected.length === 0) return;
+
+      const paths = Array.isArray(selected) ? selected : [selected];
+
+      // Get previews for all files
+      const filesWithPreviews = [];
+      for (const path of paths) {
+        try {
+          const preview = await invoke("get_import_preview", { jsonPath: path });
+          const name = path.split(/[/\\]/).pop() || path;
+          filesWithPreviews.push({ path, name, preview, status: "pending", error: null });
+        } catch (error) {
+          const name = path.split(/[/\\]/).pop() || path;
+          filesWithPreviews.push({ path, name, preview: null, status: "pending", error: null });
+          console.warn("Failed to get preview for", path, error);
+        }
+      }
+
+      // Check total attachments size
+      const totalAttachmentsSize = filesWithPreviews.reduce(
+        (sum, f) => sum + (f.preview?.attachmentsSize || 0),
+        0
+      );
+      const totalJsonSize = filesWithPreviews.reduce(
+        (sum, f) => sum + (f.preview?.jsonSize || 0),
+        0
+      );
+      const totalSpaceNeeded = totalAttachmentsSize + totalJsonSize * 3;
+      const THREE_GB = 3 * 1024 * 1024 * 1024;
+
+      const config = await invoke("get_config");
+
+      if (totalAttachmentsSize > THREE_GB && !config.skipLargeImportWarning) {
+        const confirmed = await new Promise((resolve) => {
+          setSizeWarning({
+            isOpen: true,
+            totalSize: totalSpaceNeeded,
+            attachmentsSize: totalAttachmentsSize,
+            dontAskAgain: false,
+            resolve,
+          });
+        });
+
+        if (!confirmed) return;
+      }
+
+      // For single file, check missing assets
+      if (paths.length === 1) {
         const missingAssets = await invoke("check_missing_assets", {
-          jsonPath: selected,
+          jsonPath: paths[0],
         });
 
         if (missingAssets.length > 0) {
-          // Show missing assets dialog
           setMissingAssetsDialog({
             isOpen: true,
             missingAssets,
-            jsonPath: selected,
+            jsonPath: paths[0],
+            pendingFiles: filesWithPreviews,
           });
-        } else {
-          // No missing assets, proceed with import
-          await performImport(selected);
+          return;
         }
       }
+
+      // Start import
+      await performBulkImport(filesWithPreviews);
     } catch (error) {
       console.error("Import failed:", error);
       toast.error(`Import failed: ${error}`);
     }
   }
 
-  async function performImport(jsonPath) {
-    try {
-      setImporting(true);
-      setMissingAssetsDialog({ isOpen: false, missingAssets: [], jsonPath: null });
+  async function performBulkImport(files) {
+    importCancelledRef.current = false;
 
-      const importEntry = await invoke("import_conversation", {
-        path: jsonPath,
-        alias: null,
-      });
-      console.log("import entry:", importEntry);
+    setImportState({
+      active: true,
+      files: files.map((f) => ({ ...f, status: "pending" })),
+    });
 
-      await loadImports();
-      console.log("loaded imports");
-      setImporting(false);
-      openConversation(importEntry.id);
-    } catch (error) {
-      setImporting(false);
-      console.error("Import failed:", error);
-      toast.error(`Import failed: ${error}`);
+    const importedEntries = [];
+
+    for (let i = 0; i < files.length; i++) {
+      if (importCancelledRef.current) {
+        // Mark remaining as cancelled
+        setImportState((prev) => ({
+          ...prev,
+          files: prev.files.map((f, idx) =>
+            idx >= i ? { ...f, status: "cancelled" } : f
+          ),
+        }));
+        break;
+      }
+
+      // Mark current as importing
+      setImportState((prev) => ({
+        ...prev,
+        files: prev.files.map((f, idx) =>
+          idx === i ? { ...f, status: "importing" } : f
+        ),
+      }));
+
+      try {
+        const result = await invoke("import_conversation", {
+          path: files[i].path,
+          alias: null,
+        });
+        importedEntries.push(result);
+
+        setImportState((prev) => ({
+          ...prev,
+          files: prev.files.map((f, idx) =>
+            idx === i ? { ...f, status: "done" } : f
+          ),
+        }));
+      } catch (error) {
+        const errorStr = String(error);
+        if (errorStr.includes("cancelled") || errorStr.includes("Interrupted")) {
+          setImportState((prev) => ({
+            ...prev,
+            files: prev.files.map((f, idx) =>
+              idx >= i ? { ...f, status: "cancelled" } : f
+            ),
+          }));
+          break;
+        }
+
+        setImportState((prev) => ({
+          ...prev,
+          files: prev.files.map((f, idx) =>
+            idx === i ? { ...f, status: "failed", error: errorStr } : f
+          ),
+        }));
+      }
     }
+
+    // Reload imports
+    await loadImports();
+
+    // Send notification
+    if (importedEntries.length > 0) {
+      const body =
+        importedEntries.length === 1
+          ? `"${importedEntries[0].alias}" has been imported.`
+          : `${importedEntries.length} conversations imported successfully.`;
+      sendAppNotification("Import Complete", body);
+    }
+
+    // If single file imported successfully, open it
+    if (files.length === 1 && importedEntries.length === 1) {
+      openConversation(importedEntries[0].id);
+    }
+  }
+
+  async function handleCancelImport() {
+    const allFinished = importState.files.every(
+      (f) => f.status === "done" || f.status === "failed" || f.status === "cancelled"
+    );
+
+    if (allFinished) {
+      // Just close the dialog
+      setImportState({ active: false, files: [] });
+      return;
+    }
+
+    // Cancel in-progress import
+    importCancelledRef.current = true;
+    try {
+      await invoke("cancel_import");
+    } catch (error) {
+      console.error("Failed to cancel import:", error);
+    }
+  }
+
+  function handleSizeWarningConfirm() {
+    const { resolve, dontAskAgain } = sizeWarning;
+
+    if (dontAskAgain) {
+      invoke("get_config")
+        .then((config) => {
+          config.skipLargeImportWarning = true;
+          return invoke("update_config", { config });
+        })
+        .catch((e) => console.error("Failed to save config:", e));
+    }
+
+    setSizeWarning((prev) => ({ ...prev, isOpen: false }));
+    resolve?.(true);
+  }
+
+  function handleSizeWarningCancel() {
+    const { resolve } = sizeWarning;
+    setSizeWarning((prev) => ({ ...prev, isOpen: false }));
+    resolve?.(false);
   }
 
   function handleMissingAssetsCancel() {
@@ -198,7 +388,11 @@ function AppContent() {
   }
 
   function handleMissingAssetsContinue() {
-    performImport(missingAssetsDialog.jsonPath);
+    const pendingFiles = missingAssetsDialog.pendingFiles;
+    setMissingAssetsDialog({ isOpen: false, missingAssets: [], jsonPath: null });
+    if (pendingFiles) {
+      performBulkImport(pendingFiles);
+    }
   }
 
   function openConversation(importId) {
@@ -241,12 +435,13 @@ function AppContent() {
       });
       await loadImports();
 
-      // Update tab name if it's open
-      setOpenTabs(openTabs.map(tab =>
-        tab.id === updatedImport.id
-          ? { ...tab, name: updatedImport.alias }
-          : tab
-      ));
+      setOpenTabs(
+        openTabs.map((tab) =>
+          tab.id === updatedImport.id
+            ? { ...tab, name: updatedImport.alias }
+            : tab
+        )
+      );
     } catch (error) {
       console.error("Update failed:", error);
       toast.error(`Update failed: ${error}`);
@@ -266,18 +461,24 @@ function AppContent() {
 
       console.log("Batch update results:", results);
 
-      // Count successes and failures
-      const successes = results.filter(([_, result]) => result.hasOwnProperty('Ok')).length;
-      const failures = results.filter(([_, result]) => !result.hasOwnProperty('Ok')).length;
+      const successes = results.filter(
+        ([_, result]) => result.hasOwnProperty("Ok")
+      ).length;
+      const failures = results.filter(
+        ([_, result]) => !result.hasOwnProperty("Ok")
+      ).length;
 
       if (successes > 0) {
         toast.success(`Successfully updated ${successes} conversation(s)`);
+        sendAppNotification(
+          "Update Complete",
+          `${successes} conversation(s) updated successfully.`
+        );
       }
       if (failures > 0) {
         toast.error(`Failed to update ${failures} conversation(s)`);
       }
 
-      // Reload imports to get updated compatibility info
       await loadImports();
       setUpdating(false);
     } catch (error) {
@@ -297,8 +498,50 @@ function AppContent() {
 
   return (
     <div className="app">
-      {importing && <ProgressDialog message="Importing conversation..." />}
       {updating && <ProgressDialog message="Updating conversations..." />}
+
+      <ImportDialog
+        isOpen={importState.active}
+        files={importState.files}
+        onCancel={handleCancelImport}
+      />
+
+      <Dialog
+        isOpen={sizeWarning.isOpen}
+        onClose={handleSizeWarningCancel}
+        title="Large Import Warning"
+        confirmText="Continue Import"
+        cancelText="Cancel"
+        onConfirm={handleSizeWarningConfirm}
+        onCancel={handleSizeWarningCancel}
+        type="default"
+      >
+        <div className="dialog-message">
+          <p>
+            The attachments folder is{" "}
+            <strong>{formatBytes(sizeWarning.attachmentsSize)}</strong>, which
+            exceeds 3 GB.
+          </p>
+          <p>
+            Total space needed:{" "}
+            <strong>{formatBytes(sizeWarning.totalSize)}</strong>
+          </p>
+          <label className="custom-checkbox" style={{ marginTop: "1rem" }}>
+            <input
+              type="checkbox"
+              checked={sizeWarning.dontAskAgain}
+              onChange={(e) =>
+                setSizeWarning((prev) => ({
+                  ...prev,
+                  dontAskAgain: e.target.checked,
+                }))
+              }
+            />
+            <span className="checkmark" />
+            Don't ask me again
+          </label>
+        </div>
+      </Dialog>
 
       <MissingAssetsDialog
         isOpen={missingAssetsDialog.isOpen}
@@ -364,8 +607,8 @@ function App() {
         theme="dark"
         position="bottom-right"
         style={{
-          '--toastify-color-dark': '#2b2d31',
-          '--toastify-text-color-dark': '#dbdee1',
+          "--toastify-color-dark": "#2b2d31",
+          "--toastify-text-color-dark": "#dbdee1",
         }}
       />
     </ToastProvider>

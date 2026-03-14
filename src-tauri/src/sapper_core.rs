@@ -1,9 +1,9 @@
-use crate::message_storage::{MessageStorage, StoredMessage};
+use crate::message_storage::{ MessageStorage, StoredMessage };
 use crate::models::*;
 use crate::search::MessageSearchIndex;
 use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io::{ self, Read };
+use std::path::{ Path, PathBuf };
 use uuid::Uuid;
 
 pub struct SapperCore {
@@ -60,7 +60,8 @@ impl SapperCore {
         let metadata_path = self.sapper_dir.join("metadata.json");
         let temp_path = self.sapper_dir.join("metadata.json.tmp");
 
-        let contents = serde_json::to_string_pretty(metadata)
+        let contents = serde_json
+            ::to_string_pretty(metadata)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         fs::write(&temp_path, contents)?;
@@ -79,7 +80,8 @@ impl SapperCore {
         let config_path = self.sapper_dir.join("config.json");
         let temp_path = self.sapper_dir.join("config.json.tmp");
 
-        let contents = serde_json::to_string_pretty(config)
+        let contents = serde_json
+            ::to_string_pretty(config)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         fs::write(&temp_path, contents)?;
@@ -88,31 +90,38 @@ impl SapperCore {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn import_conversation(
         &self,
         json_path: &str,
-        alias: Option<String>,
+        alias: Option<String>
     ) -> io::Result<ImportEntry> {
+        let never_cancelled = std::sync::atomic::AtomicBool::new(false);
+        self.import_conversation_with_callbacks(json_path, alias, |_, _, _, _| {}, &never_cancelled)
+    }
+
+    pub fn import_conversation_with_callbacks<F>(
+        &self,
+        json_path: &str,
+        alias: Option<String>,
+        progress: F,
+        cancelled: &std::sync::atomic::AtomicBool
+    ) -> io::Result<ImportEntry>
+        where F: Fn(&str, &str, Option<usize>, Option<usize>)
+    {
         let json_path_buf = PathBuf::from(json_path);
 
-        // Validate the JSON file exists
         if !json_path_buf.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "JSON file not found",
-            ));
+            return Err(io::Error::new(io::ErrorKind::NotFound, "JSON file not found"));
         }
 
-        // Read and parse the JSON
+        progress("parsing", "Parsing JSON export...", None, None);
         let export_data = self.parse_export(&json_path_buf)?;
-
-        // Calculate file hash
         let file_hash = self.calculate_file_hash(&json_path_buf)?;
 
-        // Generate unique ID
-        let import_id = Uuid::new_v4().to_string();
+        self.check_cancelled(cancelled)?;
 
-        // Determine alias
+        let import_id = Uuid::new_v4().to_string();
         let final_alias = alias.unwrap_or_else(|| {
             if export_data.guild.id == "0" {
                 format!("{}", export_data.channel.name)
@@ -121,44 +130,68 @@ impl SapperCore {
             }
         });
 
-        // Create import directory
         let import_dir = self.sapper_dir.join("imports").join(&import_id);
         fs::create_dir_all(&import_dir)?;
 
-        // Copy the JSON file
+        progress("copying", "Copying export file...", None, None);
         let dest_json = import_dir.join("export.json");
         fs::copy(&json_path_buf, &dest_json)?;
 
-        // Copy attachments directory if it exists
+        self.check_cancelled_with_cleanup(cancelled, &import_dir)?;
+
         let source_dir = json_path_buf.parent().unwrap();
         let attachments_dir = import_dir.join("attachments");
 
         if source_dir.exists() {
-            self.copy_attachments(source_dir, &attachments_dir)?;
+            self.copy_attachments_with_progress(
+                source_dir,
+                &attachments_dir,
+                &(|filename, current, total| {
+                    progress(
+                        "copying",
+                        &format!("Copying: {}", filename),
+                        Some(current),
+                        Some(total)
+                    );
+                }),
+                cancelled
+            )?;
         }
 
-        // Extract and copy avatar to import directory
-        let avatar_path =
-            self.extract_avatar(&export_data, &import_id, &json_path_buf, &import_dir)?;
+        self.check_cancelled_with_cleanup(cancelled, &import_dir)?;
 
-        // Convert messages to stored format
+        progress("processing", "Extracting avatar...", None, None);
+        let avatar_path = self.extract_avatar(
+            &export_data,
+            &import_id,
+            &json_path_buf,
+            &import_dir
+        )?;
+
+        progress("indexing", "Processing messages...", None, None);
         let stored_messages = self.convert_messages_to_stored(&export_data, &import_dir)?;
 
-        // Create message chunks
+        self.check_cancelled_with_cleanup(cancelled, &import_dir)?;
+
+        progress("indexing", "Creating message storage...", None, None);
         let storage = MessageStorage::new(import_dir.clone());
         storage.create_chunks(stored_messages.clone())?;
 
-        // Create search index
+        self.check_cancelled_with_cleanup(cancelled, &import_dir)?;
+
+        progress("indexing", "Building search index...", None, None);
         let index_dir = import_dir.join("search_index");
         fs::create_dir_all(&index_dir)?;
         let search_index = MessageSearchIndex::create(&index_dir)?;
         search_index.index_messages(&stored_messages)?;
 
-        // Extract and store members
+        self.check_cancelled_with_cleanup(cancelled, &import_dir)?;
+
+        progress("finalizing", "Saving member data...", None, None);
         let members = self.extract_members(&export_data)?;
         self.save_members(&import_dir, &members)?;
 
-        // Create import entry
+        progress("finalizing", "Updating metadata...", None, None);
         let import_entry = ImportEntry {
             id: import_id.clone(),
             alias: final_alias,
@@ -172,29 +205,51 @@ impl SapperCore {
             avatar_path,
         };
 
-        // Load metadata and add entry
         let mut metadata = self.load_metadata()?;
         metadata.imports.push(import_entry.clone());
         self.save_metadata(&metadata)?;
 
+        progress("done", "Import complete!", None, None);
+
         Ok(import_entry)
+    }
+
+    fn check_cancelled(&self, cancelled: &std::sync::atomic::AtomicBool) -> io::Result<()> {
+        if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            Err(io::Error::new(io::ErrorKind::Interrupted, "Import cancelled"))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_cancelled_with_cleanup(
+        &self,
+        cancelled: &std::sync::atomic::AtomicBool,
+        import_dir: &Path
+    ) -> io::Result<()> {
+        if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            fs::remove_dir_all(import_dir).ok();
+            Err(io::Error::new(io::ErrorKind::Interrupted, "Import cancelled"))
+        } else {
+            Ok(())
+        }
     }
 
     fn convert_messages_to_stored(
         &self,
         export: &DiscordExport,
-        import_dir: &Path,
+        import_dir: &Path
     ) -> io::Result<Vec<StoredMessage>> {
         let mut stored_messages = Vec::new();
 
         for (idx, msg) in export.messages.iter().enumerate() {
-            let timestamp = chrono::DateTime::parse_from_rfc3339(&msg.timestamp)
+            let timestamp = chrono::DateTime
+                ::parse_from_rfc3339(&msg.timestamp)
                 .map(|dt| dt.timestamp() as u64)
                 .unwrap_or(0);
 
             // Collect only attachments into media_refs (stickers are handled separately)
-            let media_refs: Vec<String> = msg
-                .attachments
+            let media_refs: Vec<String> = msg.attachments
                 .iter()
                 .map(|att| {
                     // Use att.url which contains the actual filename with suffix
@@ -229,9 +284,10 @@ impl SapperCore {
         for i in 0..stored_messages.len() {
             if let Some(ref reference) = stored_messages[i].reference {
                 // Find the referenced message by original_id
-                if let Some(referenced) = stored_messages
-                    .iter()
-                    .find(|m| m.original_id == reference.message_id)
+                if
+                    let Some(referenced) = stored_messages
+                        .iter()
+                        .find(|m| m.original_id == reference.message_id)
                 {
                     stored_messages[i].referenced_message = Some(Box::new(referenced.clone()));
                 }
@@ -252,7 +308,7 @@ impl SapperCore {
         file.read_to_end(&mut contents)?;
 
         use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use std::hash::{ Hash, Hasher };
 
         let mut hasher = DefaultHasher::new();
         contents.hash(&mut hasher);
@@ -261,22 +317,49 @@ impl SapperCore {
         Ok(format!("{:x}", hash))
     }
 
+    #[allow(dead_code)]
     fn copy_attachments(&self, source: &Path, dest: &Path) -> io::Result<()> {
+        let never_cancelled = std::sync::atomic::AtomicBool::new(false);
+        self.copy_attachments_with_progress(source, dest, &(|_, _, _| {}), &never_cancelled)
+    }
+
+    fn copy_attachments_with_progress(
+        &self,
+        source: &Path,
+        dest: &Path,
+        progress: &dyn Fn(&str, usize, usize),
+        cancelled: &std::sync::atomic::AtomicBool
+    ) -> io::Result<()> {
         fs::create_dir_all(dest)?;
 
-        for entry in walkdir::WalkDir::new(source)
+        let entries: Vec<_> = walkdir::WalkDir
+            ::new(source)
             .into_iter()
             .filter_map(|e| e.ok())
-        {
+            .filter(|e| e.path().is_file())
+            .collect();
+
+        let total = entries.len();
+
+        for (idx, entry) in entries.iter().enumerate() {
+            if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "Import cancelled"));
+            }
+
             let path = entry.path();
-            if path.is_file() {
-                if let Ok(relative) = path.strip_prefix(source) {
-                    let dest_path = dest.join(relative);
-                    if let Some(parent) = dest_path.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    fs::copy(path, dest_path)?;
+            if let Ok(relative) = path.strip_prefix(source) {
+                let dest_path = dest.join(relative);
+                if let Some(parent) = dest_path.parent() {
+                    fs::create_dir_all(parent)?;
                 }
+
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                progress(filename, idx + 1, total);
+                fs::copy(path, &dest_path)?;
             }
         }
 
@@ -289,8 +372,7 @@ impl SapperCore {
 
     pub fn load_export(&self, import_id: &str) -> io::Result<DiscordExport> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -347,19 +429,16 @@ impl SapperCore {
 
             // Only add if we haven't seen this author before
             if !members_map.contains_key(&author_id) {
-                members_map.insert(
-                    author_id.clone(),
-                    Member {
-                        id: author_id,
-                        name: msg.author.name.clone(),
-                        discriminator: msg.author.discriminator.clone(),
-                        nickname: msg.author.nickname.clone(),
-                        avatar_url: msg.author.avatar_url.clone(),
-                        color: msg.author.color.clone(),
-                        is_bot: msg.author.is_bot,
-                        roles: msg.author.roles.clone(),
-                    },
-                );
+                members_map.insert(author_id.clone(), Member {
+                    id: author_id,
+                    name: msg.author.name.clone(),
+                    discriminator: msg.author.discriminator.clone(),
+                    nickname: msg.author.nickname.clone(),
+                    avatar_url: msg.author.avatar_url.clone(),
+                    color: msg.author.color.clone(),
+                    is_bot: msg.author.is_bot,
+                    roles: msg.author.roles.clone(),
+                });
             }
         }
 
@@ -384,7 +463,8 @@ impl SapperCore {
         let import_data_path = import_dir.join("import_data.json");
         let temp_path = import_dir.join("import_data.json.tmp");
 
-        let contents = serde_json::to_string_pretty(&import_data)
+        let contents = serde_json
+            ::to_string_pretty(&import_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         fs::write(&temp_path, contents)?;
@@ -398,7 +478,8 @@ impl SapperCore {
         let import_data_path = import_dir.join("import_data.json");
         let temp_path = import_dir.join("import_data.json.tmp");
 
-        let contents = serde_json::to_string_pretty(import_data)
+        let contents = serde_json
+            ::to_string_pretty(import_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         fs::write(&temp_path, contents)?;
@@ -410,8 +491,7 @@ impl SapperCore {
     // Load members from import directory (supports both old and new formats)
     pub fn load_members(&self, import_id: &str) -> io::Result<MemberStorage> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -423,7 +503,8 @@ impl SapperCore {
         // Try to load new format first (import_data.json)
         if import_data_path.exists() {
             let contents = fs::read_to_string(import_data_path)?;
-            let import_data: ImportData = serde_json::from_str(&contents)
+            let import_data: ImportData = serde_json
+                ::from_str(&contents)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             return Ok(MemberStorage {
                 members: import_data.members,
@@ -433,7 +514,8 @@ impl SapperCore {
         // Fallback to old format (members.json)
         if members_path.exists() {
             let contents = fs::read_to_string(members_path)?;
-            let members: MemberStorage = serde_json::from_str(&contents)
+            let members: MemberStorage = serde_json
+                ::from_str(&contents)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Migrate to new format
@@ -451,8 +533,7 @@ impl SapperCore {
     // Load ImportData (new format only)
     pub fn load_import_data(&self, import_id: &str) -> io::Result<ImportData> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -472,8 +553,7 @@ impl SapperCore {
         }
 
         let contents = fs::read_to_string(import_data_path)?;
-        serde_json::from_str(&contents)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     // Update a specific member's information
@@ -482,11 +562,10 @@ impl SapperCore {
         import_id: &str,
         member_id: &str,
         nickname: Option<String>,
-        avatar_url: Option<String>,
+        avatar_url: Option<String>
     ) -> io::Result<()> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -508,18 +587,14 @@ impl SapperCore {
             self.save_import_data(&import_dir, &import_data)?;
             Ok(())
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Member not found",
-            ))
+            Err(io::Error::new(io::ErrorKind::NotFound, "Member not found"))
         }
     }
 
     /// Copy an avatar file into the import's attachments folder
     pub fn copy_avatar_to_import(&self, import_id: &str, source_path: &str) -> io::Result<String> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -542,7 +617,8 @@ impl SapperCore {
             // If file exists, append a timestamp to make it unique
             let stem = source.file_stem().unwrap_or_default().to_string_lossy();
             let ext = source.extension().unwrap_or_default().to_string_lossy();
-            let timestamp = std::time::SystemTime::now()
+            let timestamp = std::time::SystemTime
+                ::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
@@ -556,11 +632,7 @@ impl SapperCore {
         fs::copy(source_path, &final_dest_path)?;
 
         // Return just the filename (relative path)
-        let relative_filename = final_dest_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let relative_filename = final_dest_path.file_name().unwrap().to_string_lossy().to_string();
 
         Ok(relative_filename)
     }
@@ -570,7 +642,7 @@ impl SapperCore {
         export: &DiscordExport,
         _import_id: &str,
         json_path: &Path,
-        import_dir: &Path,
+        import_dir: &Path
     ) -> io::Result<String> {
         let source_dir = json_path.parent().unwrap_or_else(|| Path::new("."));
 
@@ -579,12 +651,12 @@ impl SapperCore {
             // It's a DM - find the other user's avatar
             // The channel name is the other user's name
             // Check up to 50 messages to find a match
-            let limit = 50.min(export.messages.len());
-            if let Some(message) = export
-                .messages
-                .iter()
-                .take(limit)
-                .find(|m| m.author.nickname == export.channel.name)
+            let limit = (50).min(export.messages.len());
+            if
+                let Some(message) = export.messages
+                    .iter()
+                    .take(limit)
+                    .find(|m| m.author.nickname == export.channel.name)
             {
                 Some(message.author.avatar_url.clone())
             } else {
@@ -652,8 +724,7 @@ impl SapperCore {
         let metadata = self.load_metadata()?;
 
         // Filter to only selected imports
-        let selected_imports: Vec<ImportEntry> = metadata
-            .imports
+        let selected_imports: Vec<ImportEntry> = metadata.imports
             .into_iter()
             .filter(|entry| import_ids.contains(&entry.id))
             .collect();
@@ -664,7 +735,8 @@ impl SapperCore {
         };
 
         // Save filtered metadata
-        let metadata_json = serde_json::to_string_pretty(&filtered_metadata)
+        let metadata_json = serde_json
+            ::to_string_pretty(&filtered_metadata)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         fs::write(dest.join("metadata.json"), metadata_json)?;
 
@@ -695,23 +767,22 @@ impl SapperCore {
 
         // Validate backup structure
         if !source.join("metadata.json").exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid backup: missing metadata.json",
-            ));
+            return Err(
+                io::Error::new(io::ErrorKind::InvalidInput, "Invalid backup: missing metadata.json")
+            );
         }
 
         // Load source metadata
         let source_metadata_contents = fs::read_to_string(source.join("metadata.json"))?;
-        let source_metadata: ImportMetadata = serde_json::from_str(&source_metadata_contents)
+        let source_metadata: ImportMetadata = serde_json
+            ::from_str(&source_metadata_contents)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // Load current metadata
         let mut current_metadata = self.load_metadata()?;
 
         // Merge imports (avoid duplicates by file_hash)
-        let existing_hashes: std::collections::HashSet<String> = current_metadata
-            .imports
+        let existing_hashes: std::collections::HashSet<String> = current_metadata.imports
             .iter()
             .map(|e| e.file_hash.clone())
             .collect();
@@ -756,30 +827,32 @@ impl SapperCore {
     }
 
     /// Import backup with detailed results (merge with existing data)
-    pub fn import_backup_detailed(&self, source_path: &str) -> io::Result<crate::models::ImportBackupResult> {
-        use crate::models::{ImportBackupResult, ImportedConversation, FailedImport};
+    pub fn import_backup_detailed(
+        &self,
+        source_path: &str
+    ) -> io::Result<crate::models::ImportBackupResult> {
+        use crate::models::{ ImportBackupResult, ImportedConversation, FailedImport };
 
         let source = PathBuf::from(source_path);
 
         // Validate backup structure
         if !source.join("metadata.json").exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid backup: missing metadata.json",
-            ));
+            return Err(
+                io::Error::new(io::ErrorKind::InvalidInput, "Invalid backup: missing metadata.json")
+            );
         }
 
         // Load source metadata
         let source_metadata_contents = fs::read_to_string(source.join("metadata.json"))?;
-        let source_metadata: ImportMetadata = serde_json::from_str(&source_metadata_contents)
+        let source_metadata: ImportMetadata = serde_json
+            ::from_str(&source_metadata_contents)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         // Load current metadata
         let mut current_metadata = self.load_metadata()?;
 
         // Merge imports (avoid duplicates by file_hash)
-        let existing_hashes: std::collections::HashSet<String> = current_metadata
-            .imports
+        let existing_hashes: std::collections::HashSet<String> = current_metadata.imports
             .iter()
             .map(|e| e.file_hash.clone())
             .collect();
@@ -789,7 +862,11 @@ impl SapperCore {
         let total_count = source_metadata.imports.len();
 
         for source_entry in source_metadata.imports {
-            let conversation_name = format!("{} in {}", source_entry.channel_name, source_entry.guild_name);
+            let conversation_name = format!(
+                "{} in {}",
+                source_entry.channel_name,
+                source_entry.guild_name
+            );
 
             // Skip if already exists (same file hash)
             if existing_hashes.contains(&source_entry.file_hash) {
@@ -834,7 +911,7 @@ impl SapperCore {
         &self,
         source: &Path,
         current_metadata: &mut ImportMetadata,
-        source_entry: &ImportEntry,
+        source_entry: &ImportEntry
     ) -> io::Result<()> {
         // Generate new ID to avoid conflicts
         let new_id = Uuid::new_v4().to_string();
@@ -845,10 +922,9 @@ impl SapperCore {
         if source_import_dir.exists() {
             self.copy_directory(&source_import_dir, &dest_import_dir)?;
         } else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Import directory not found in backup",
-            ));
+            return Err(
+                io::Error::new(io::ErrorKind::NotFound, "Import directory not found in backup")
+            );
         }
 
         // Create new entry with new ID and path
@@ -866,10 +942,10 @@ impl SapperCore {
     fn copy_directory(&self, src: &Path, dest: &Path) -> io::Result<()> {
         fs::create_dir_all(dest)?;
 
-        for entry in walkdir::WalkDir::new(src)
+        for entry in walkdir::WalkDir
+            ::new(src)
             .into_iter()
-            .filter_map(|e| e.ok())
-        {
+            .filter_map(|e| e.ok()) {
             let path = entry.path();
             if let Ok(relative) = path.strip_prefix(src) {
                 let dest_path = dest.join(relative);
@@ -930,10 +1006,7 @@ impl SapperCore {
         let source_folder_buf = PathBuf::from(source_folder);
 
         if !source_folder_buf.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Source folder not found",
-            ));
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Source folder not found"));
         }
 
         let mut file_count = 0;
@@ -954,7 +1027,7 @@ impl SapperCore {
         &self,
         json_path: &str,
         source_folder: &str,
-        progress_callback: impl Fn(usize, usize, &str),
+        progress_callback: impl Fn(usize, usize, &str)
     ) -> io::Result<usize> {
         let json_path_buf = PathBuf::from(json_path);
         let source_folder_buf = PathBuf::from(source_folder);
@@ -963,10 +1036,7 @@ impl SapperCore {
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid JSON path"))?;
 
         if !source_folder_buf.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Source folder not found",
-            ));
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Source folder not found"));
         }
 
         // First, count total files
@@ -1003,8 +1073,7 @@ impl SapperCore {
     /// Reimport a conversation from its original export.json to update it to the current version
     pub fn reimport_conversation(&self, import_id: &str) -> io::Result<()> {
         let metadata = self.load_metadata()?;
-        let import_entry = metadata
-            .imports
+        let import_entry = metadata.imports
             .iter()
             .find(|e| e.id == import_id)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import not found"))?;
@@ -1052,7 +1121,11 @@ impl SapperCore {
         // Preserve user customizations (nicknames, avatars) if they exist
         if let Some(existing) = existing_import_data {
             for new_member in &mut new_import_data.members {
-                if let Some(existing_member) = existing.members.iter().find(|m| m.id == new_member.id) {
+                if
+                    let Some(existing_member) = existing.members
+                        .iter()
+                        .find(|m| m.id == new_member.id)
+                {
                     // Only preserve if they were customized (different from original)
                     new_member.nickname = existing_member.nickname.clone();
                     new_member.avatar_url = existing_member.avatar_url.clone();
@@ -1067,15 +1140,60 @@ impl SapperCore {
     }
 
     /// Batch reimport multiple conversations
-    pub fn batch_reimport_conversations(&self, import_ids: Vec<String>) -> io::Result<Vec<(String, Result<(), String>)>> {
+    pub fn batch_reimport_conversations(
+        &self,
+        import_ids: Vec<String>
+    ) -> io::Result<Vec<(String, Result<(), String>)>> {
         let mut results = Vec::new();
 
         for import_id in import_ids {
-            let result = self.reimport_conversation(&import_id)
-                .map_err(|e| e.to_string());
+            let result = self.reimport_conversation(&import_id).map_err(|e| e.to_string());
             results.push((import_id, result));
         }
 
         Ok(results)
+    }
+
+    /// Get a preview of a conversation export without importing it
+    pub fn get_import_preview(&self, json_path: &str) -> io::Result<crate::models::ImportPreview> {
+        let json_path_buf = PathBuf::from(json_path);
+
+        if !json_path_buf.exists() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "JSON file not found"));
+        }
+
+        let export_data = self.parse_export(&json_path_buf)?;
+        let json_size = fs::metadata(&json_path_buf)?.len();
+
+        let source_dir = json_path_buf.parent().unwrap_or_else(|| Path::new("."));
+        let mut attachments_size = 0u64;
+
+        for entry in walkdir::WalkDir
+            ::new(source_dir)
+            .into_iter()
+            .filter_map(|e| e.ok()) {
+            if entry.path().is_file() && entry.path() != json_path_buf {
+                attachments_size += entry
+                    .metadata()
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+            }
+        }
+
+        let file_name = json_path_buf
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        Ok(crate::models::ImportPreview {
+            file_name,
+            channel_name: export_data.channel.name,
+            guild_name: export_data.guild.name,
+            guild_id: export_data.guild.id,
+            message_count: export_data.messages.len(),
+            json_size,
+            attachments_size,
+        })
     }
 }

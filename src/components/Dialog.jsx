@@ -6,6 +6,7 @@ function Dialog({
   onClose,
   title,
   message,
+  children,
   confirmText = "Confirm",
   cancelText = "Cancel",
   onConfirm,
@@ -35,7 +36,7 @@ function Dialog({
         </div>
 
         <div className="dialog-content">
-          <p className="dialog-message">{message}</p>
+          {children || <p className="dialog-message">{message}</p>}
         </div>
 
         <div className="dialog-footer">
@@ -43,9 +44,8 @@ function Dialog({
             {cancelText}
           </button>
           <button
-            className={`dialog-button dialog-button-confirm ${
-              type === "danger" ? "danger" : type === "success" ? "success" : ""
-            }`}
+            className={`dialog-button dialog-button-confirm ${type === "danger" ? "danger" : type === "success" ? "success" : ""
+              }`}
             onClick={handleConfirm}
           >
             {confirmText}

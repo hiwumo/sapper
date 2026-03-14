@@ -18,6 +18,7 @@
           "path": "$HOME/.sapper/**"
         }
       ]
-    }
+    },
+    "notification:default"
   ]
 }

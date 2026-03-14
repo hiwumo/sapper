@@ -11,15 +11,17 @@ use message_storage::StoredMessage;
 use models::*;
 use sapper_core::SapperCore;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{Emitter, State, Window};
-use tracing::{debug, error, info, warn};
+use std::sync::atomic::AtomicBool;
+use std::sync::{ Arc, Mutex };
+use tauri::{ Emitter, State, Window };
+use tracing::{ debug, error, info, warn };
 
 // Global state for SapperCore
 struct AppState {
     core: Mutex<Option<SapperCore>>,
     log_dir: PathBuf,
     discord: DiscordPresence,
+    import_cancelled: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -49,7 +51,9 @@ fn get_imports(state: State<AppState>) -> Result<Vec<ImportEntry>, String> {
 }
 
 #[tauri::command]
-fn get_imports_with_compatibility(state: State<AppState>) -> Result<Vec<ImportEntryWithCompatibility>, String> {
+fn get_imports_with_compatibility(
+    state: State<AppState>
+) -> Result<Vec<ImportEntryWithCompatibility>, String> {
     debug!("Getting imports list with compatibility info");
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
@@ -69,8 +73,10 @@ fn get_imports_with_compatibility(state: State<AppState>) -> Result<Vec<ImportEn
             .map(|data| data.import_version)
             .unwrap_or_else(|| "0.1.0".to_string()); // Default to oldest version if not found
 
-        let (is_compatible, needs_update) =
-            versioning::check_compatibility(&import_version, versioning::CURRENT_VERSION);
+        let (is_compatible, needs_update) = versioning::check_compatibility(
+            &import_version,
+            versioning::CURRENT_VERSION
+        );
 
         imports_with_compat.push(ImportEntryWithCompatibility {
             entry,
@@ -88,87 +94,84 @@ fn get_imports_with_compatibility(state: State<AppState>) -> Result<Vec<ImportEn
 }
 
 #[tauri::command]
-fn import_conversation(
-    state: State<AppState>,
+async fn import_conversation(
+    state: State<'_, AppState>,
+    window: Window,
     path: String,
-    alias: Option<String>,
+    alias: Option<String>
 ) -> Result<ImportEntry, String> {
-    info!(
-        "Importing conversation from path: {}",
-        logger::sanitize_string(&path)
-    );
+    info!("Importing conversation from path: {}", logger::sanitize_string(&path));
     if let Some(ref a) = alias {
         debug!("Using alias: {}", logger::sanitize_string(a));
     }
 
-    let core_lock = state.core.lock().unwrap();
-    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+    // Reset cancellation flag
+    state.import_cancelled.store(false, std::sync::atomic::Ordering::SeqCst);
+    let cancelled = state.import_cancelled.clone();
 
-    let result = core.import_conversation(&path, alias).map_err(|e| {
-        error!("Failed to import conversation: {}", e);
-        e.to_string()
-    })?;
+    let result = tokio::task
+        ::spawn_blocking(move || {
+            let core = SapperCore::new().map_err(|e| e.to_string())?;
 
-    info!(
-        "Successfully imported conversation with ID: {}",
-        logger::sanitize_string(&result.id)
-    );
+            let progress = |
+                phase: &str,
+                message: &str,
+                current: Option<usize>,
+                total: Option<usize>
+            | {
+                let _ = window.emit(
+                    "import-progress",
+                    serde_json::json!({
+                    "phase": phase,
+                    "message": message,
+                    "current": current,
+                    "total": total,
+                })
+                );
+            };
+
+            core.import_conversation_with_callbacks(&path, alias, progress, &cancelled).map_err(|e|
+                e.to_string()
+            )
+        }).await
+        .map_err(|e| format!("Task join error: {}", e))??;
+
+    info!("Successfully imported conversation with ID: {}", logger::sanitize_string(&result.id));
     Ok(result)
 }
 
 #[tauri::command]
 fn load_conversation(state: State<AppState>, import_id: String) -> Result<DiscordExport, String> {
-    info!(
-        "Loading conversation with ID: {}",
-        logger::sanitize_string(&import_id)
-    );
+    info!("Loading conversation with ID: {}", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     core.load_export(&import_id).map_err(|e| {
-        error!(
-            "Failed to load conversation {}: {}",
-            logger::sanitize_string(&import_id),
-            e
-        );
+        error!("Failed to load conversation {}: {}", logger::sanitize_string(&import_id), e);
         e.to_string()
     })
 }
 
 #[tauri::command]
 fn delete_import(state: State<AppState>, import_id: String) -> Result<(), String> {
-    info!(
-        "Deleting import with ID: {}",
-        logger::sanitize_string(&import_id)
-    );
+    info!("Deleting import with ID: {}", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     core.delete_import(&import_id).map_err(|e| {
-        error!(
-            "Failed to delete import {}: {}",
-            logger::sanitize_string(&import_id),
-            e
-        );
+        error!("Failed to delete import {}: {}", logger::sanitize_string(&import_id), e);
         e.to_string()
     })
 }
 
 #[tauri::command]
 fn update_import(state: State<AppState>, import_id: String, alias: String) -> Result<(), String> {
-    info!(
-        "Updating import {} with new alias",
-        logger::sanitize_string(&import_id)
-    );
+    info!("Updating import {} with new alias", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     core.update_import_alias(&import_id, alias).map_err(|e| {
-        error!(
-            "Failed to update import {}: {}",
-            logger::sanitize_string(&import_id),
-            e
-        );
+        error!("Failed to update import {}: {}", logger::sanitize_string(&import_id), e);
         e.to_string()
     })
 }
@@ -193,31 +196,26 @@ fn update_config(state: State<AppState>, config: AppConfig) -> Result<(), String
 fn save_conversation_position(
     state: State<AppState>,
     import_id: String,
-    message_id: u64,
+    message_id: u64
 ) -> Result<(), String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let mut config = core.load_config().map_err(|e| e.to_string())?;
-    config
-        .conversation_positions
-        .insert(import_id, models::ConversationPosition { message_id });
+    config.conversation_positions.insert(import_id, models::ConversationPosition { message_id });
     core.save_config(&config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn get_conversation_position(
     state: State<AppState>,
-    import_id: String,
+    import_id: String
 ) -> Result<Option<u64>, String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let config = core.load_config().map_err(|e| e.to_string())?;
-    Ok(config
-        .conversation_positions
-        .get(&import_id)
-        .map(|pos| pos.message_id))
+    Ok(config.conversation_positions.get(&import_id).map(|pos| pos.message_id))
 }
 
 #[tauri::command]
@@ -225,7 +223,7 @@ fn load_messages(
     state: State<AppState>,
     import_id: String,
     start_index: usize,
-    count: usize,
+    count: usize
 ) -> Result<Vec<StoredMessage>, String> {
     use std::path::PathBuf;
 
@@ -243,8 +241,7 @@ fn load_messages(
         error!("Failed to load metadata: {}", e);
         e.to_string()
     })?;
-    let import_entry = metadata
-        .imports
+    let import_entry = metadata.imports
         .iter()
         .find(|e| e.id == import_id)
         .ok_or_else(|| {
@@ -255,16 +252,10 @@ fn load_messages(
     let import_dir = PathBuf::from(&import_entry.import_path);
     let storage = message_storage::MessageStorage::new(import_dir);
 
-    let result = storage
-        .load_messages_range(start_index, count)
-        .map_err(|e| {
-            error!(
-                "Failed to load messages for {}: {}",
-                logger::sanitize_string(&import_id),
-                e
-            );
-            e.to_string()
-        })?;
+    let result = storage.load_messages_range(start_index, count).map_err(|e| {
+        error!("Failed to load messages for {}: {}", logger::sanitize_string(&import_id), e);
+        e.to_string()
+    })?;
 
     debug!("Successfully loaded {} messages", result.len());
     Ok(result)
@@ -277,7 +268,7 @@ fn search_messages(
     query: String,
     limit: usize,
     after_timestamp: Option<u64>,
-    before_timestamp: Option<u64>,
+    before_timestamp: Option<u64>
 ) -> Result<Vec<u64>, String> {
     use std::path::PathBuf;
 
@@ -297,8 +288,7 @@ fn search_messages(
         error!("Failed to load metadata: {}", e);
         e.to_string()
     })?;
-    let import_entry = metadata
-        .imports
+    let import_entry = metadata.imports
         .iter()
         .find(|e| e.id == import_id)
         .ok_or_else(|| {
@@ -331,8 +321,7 @@ fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let metadata = core.load_metadata().map_err(|e| e.to_string())?;
-    let import_entry = metadata
-        .imports
+    let import_entry = metadata.imports
         .iter()
         .find(|e| e.id == import_id)
         .ok_or("Import not found")?;
@@ -350,8 +339,7 @@ fn get_import_path(state: State<AppState>, import_id: String) -> Result<String, 
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let metadata = core.load_metadata().map_err(|e| e.to_string())?;
-    let import_entry = metadata
-        .imports
+    let import_entry = metadata.imports
         .iter()
         .find(|e| e.id == import_id)
         .ok_or("Import not found")?;
@@ -365,8 +353,7 @@ fn get_conversation_info(state: State<AppState>, import_id: String) -> Result<Im
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let metadata = core.load_metadata().map_err(|e| e.to_string())?;
-    let import_entry = metadata
-        .imports
+    let import_entry = metadata.imports
         .iter()
         .find(|e| e.id == import_id)
         .ok_or("Import not found")?;
@@ -400,20 +387,19 @@ fn update_member(
     import_id: String,
     member_id: String,
     nickname: Option<String>,
-    avatar_url: Option<String>,
+    avatar_url: Option<String>
 ) -> Result<(), String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    core.update_member(&import_id, &member_id, nickname, avatar_url)
-        .map_err(|e| e.to_string())
+    core.update_member(&import_id, &member_id, nickname, avatar_url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn copy_avatar_to_import(
     state: State<AppState>,
     import_id: String,
-    source_path: String,
+    source_path: String
 ) -> Result<String, String> {
     info!(
         "Copying avatar to import {} from: {}",
@@ -423,17 +409,12 @@ fn copy_avatar_to_import(
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    let relative_path = core
-        .copy_avatar_to_import(&import_id, &source_path)
-        .map_err(|e| {
-            error!("Failed to copy avatar: {}", e);
-            e.to_string()
-        })?;
+    let relative_path = core.copy_avatar_to_import(&import_id, &source_path).map_err(|e| {
+        error!("Failed to copy avatar: {}", e);
+        e.to_string()
+    })?;
 
-    info!(
-        "Successfully copied avatar, relative path: {}",
-        logger::sanitize_string(&relative_path)
-    );
+    info!("Successfully copied avatar, relative path: {}", logger::sanitize_string(&relative_path));
     Ok(relative_path)
 }
 
@@ -466,7 +447,8 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<Option<serde_json::Va
                     Ok(update_option) => {
                         if let Some(update) = update_option {
                             info!("Update available: version {}", update.version);
-                            let update_info = serde_json::json!({
+                            let update_info =
+                                serde_json::json!({
                                 "version": update.version,
                                 "current_version": update.current_version,
                                 "date": update.date,
@@ -520,14 +502,13 @@ async fn download_and_install_update(app: tauri::AppHandle, window: Window) -> R
                                         serde_json::json!({
                                             "chunk_length": chunk_length,
                                             "content_length": content_length,
-                                        }),
+                                        })
                                     );
                                 },
                                 || {
                                     info!("Update download finished");
-                                },
-                            )
-                            .await
+                                }
+                            ).await
                             .map_err(|e| {
                                 error!("Failed to download/install update: {}", e);
                                 format!("Update installation failed: {}", e)
@@ -561,10 +542,7 @@ async fn download_and_install_update(app: tauri::AppHandle, window: Window) -> R
 
 #[tauri::command]
 fn export_all_conversations(state: State<AppState>, dest_path: String) -> Result<(), String> {
-    info!(
-        "Exporting all conversations to: {}",
-        logger::sanitize_string(&dest_path)
-    );
+    info!("Exporting all conversations to: {}", logger::sanitize_string(&dest_path));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
@@ -581,7 +559,7 @@ fn export_all_conversations(state: State<AppState>, dest_path: String) -> Result
 fn export_selected_conversations(
     state: State<AppState>,
     dest_path: String,
-    import_ids: Vec<String>,
+    import_ids: Vec<String>
 ) -> Result<(), String> {
     info!(
         "Exporting {} selected conversations to: {}",
@@ -602,10 +580,7 @@ fn export_selected_conversations(
 
 #[tauri::command]
 fn import_backup(state: State<AppState>, source_path: String) -> Result<usize, String> {
-    info!(
-        "Importing backup from: {}",
-        logger::sanitize_string(&source_path)
-    );
+    info!("Importing backup from: {}", logger::sanitize_string(&source_path));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
@@ -628,11 +603,11 @@ fn import_backup(state: State<AppState>, source_path: String) -> Result<usize, S
 }
 
 #[tauri::command]
-fn import_backup_detailed(state: State<AppState>, source_path: String) -> Result<ImportBackupResult, String> {
-    info!(
-        "Importing backup (detailed) from: {}",
-        logger::sanitize_string(&source_path)
-    );
+fn import_backup_detailed(
+    state: State<AppState>,
+    source_path: String
+) -> Result<ImportBackupResult, String> {
+    info!("Importing backup (detailed) from: {}", logger::sanitize_string(&source_path));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
@@ -652,10 +627,7 @@ fn import_backup_detailed(state: State<AppState>, source_path: String) -> Result
 
 #[tauri::command]
 fn check_missing_assets(state: State<AppState>, json_path: String) -> Result<Vec<String>, String> {
-    info!(
-        "Checking for missing assets in: {}",
-        logger::sanitize_string(&json_path)
-    );
+    info!("Checking for missing assets in: {}", logger::sanitize_string(&json_path));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
@@ -672,41 +644,37 @@ fn check_missing_assets(state: State<AppState>, json_path: String) -> Result<Vec
 async fn copy_assets_to_json_dir(
     window: Window,
     json_path: String,
-    source_folder: String,
+    source_folder: String
 ) -> Result<usize, String> {
-    info!(
-        "Copying assets from {} to JSON directory",
-        logger::sanitize_string(&source_folder)
-    );
+    info!("Copying assets from {} to JSON directory", logger::sanitize_string(&source_folder));
 
     // Run the blocking operation in a separate thread
-    let result = tokio::task::spawn_blocking(move || {
-        // Create a new SapperCore instance (it's cheap, just holds the sapper_dir path)
-        let core = SapperCore::new().map_err(|e| e.to_string())?;
+    let result = tokio::task
+        ::spawn_blocking(move || {
+            // Create a new SapperCore instance (it's cheap, just holds the sapper_dir path)
+            let core = SapperCore::new().map_err(|e| e.to_string())?;
 
-        // Perform the copy with progress callbacks
-        core.copy_assets_to_json_dir(
-            &json_path,
-            &source_folder,
-            move |current, total, filename| {
-                // Emit progress event with filename
-                let _ = window.emit(
-                    "copy-progress",
-                    serde_json::json!({
+            // Perform the copy with progress callbacks
+            core.copy_assets_to_json_dir(
+                &json_path,
+                &source_folder,
+                move |current, total, filename| {
+                    // Emit progress event with filename
+                    let _ = window.emit(
+                        "copy-progress",
+                        serde_json::json!({
                         "current": current,
                         "total": total,
                         "filename": filename,
-                    }),
-                );
-            },
-        )
-        .map_err(|e| {
-            error!("Failed to copy assets: {}", e);
-            e.to_string()
-        })
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))??;
+                    })
+                    );
+                }
+            ).map_err(|e| {
+                error!("Failed to copy assets: {}", e);
+                e.to_string()
+            })
+        }).await
+        .map_err(|e| format!("Task join error: {}", e))??;
 
     info!("Copied {} assets", result);
     Ok(result)
@@ -714,19 +682,12 @@ async fn copy_assets_to_json_dir(
 
 #[tauri::command]
 fn reimport_conversation(state: State<AppState>, import_id: String) -> Result<(), String> {
-    info!(
-        "Reimporting conversation with ID: {}",
-        logger::sanitize_string(&import_id)
-    );
+    info!("Reimporting conversation with ID: {}", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     core.reimport_conversation(&import_id).map_err(|e| {
-        error!(
-            "Failed to reimport conversation {}: {}",
-            logger::sanitize_string(&import_id),
-            e
-        );
+        error!("Failed to reimport conversation {}: {}", logger::sanitize_string(&import_id), e);
         e.to_string()
     })?;
 
@@ -737,28 +698,43 @@ fn reimport_conversation(state: State<AppState>, import_id: String) -> Result<()
 #[tauri::command]
 fn batch_reimport_conversations(
     state: State<AppState>,
-    import_ids: Vec<String>,
+    import_ids: Vec<String>
 ) -> Result<Vec<(String, Result<(), String>)>, String> {
     info!("Batch reimporting {} conversations", import_ids.len());
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    let results = core
-        .batch_reimport_conversations(import_ids)
-        .map_err(|e| {
-            error!("Failed to batch reimport conversations: {}", e);
-            e.to_string()
-        })?;
+    let results = core.batch_reimport_conversations(import_ids).map_err(|e| {
+        error!("Failed to batch reimport conversations: {}", e);
+        e.to_string()
+    })?;
     info!("Batch results: {:#?}", results);
 
-    let success_count = results.iter().filter(|(_, r)| r.is_ok()).count();
-    info!(
-        "Batch reimport completed: {} successful out of {} total",
-        success_count,
-        results.len()
-    );
+    let success_count = results
+        .iter()
+        .filter(|(_, r)| r.is_ok())
+        .count();
+    info!("Batch reimport completed: {} successful out of {} total", success_count, results.len());
 
     Ok(results)
+}
+
+#[tauri::command]
+fn cancel_import(state: State<AppState>) -> Result<(), String> {
+    info!("Cancelling import");
+    state.import_cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_import_preview(json_path: String) -> Result<ImportPreview, String> {
+    info!("Getting import preview for: {}", logger::sanitize_string(&json_path));
+    tokio::task
+        ::spawn_blocking(move || {
+            let core = SapperCore::new().map_err(|e| e.to_string())?;
+            core.get_import_preview(&json_path).map_err(|e| e.to_string())
+        }).await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -776,52 +752,59 @@ pub fn run() {
     let discord = DiscordPresence::new();
     discord.connect();
 
-    tauri::Builder::default()
+    tauri::Builder
+        ::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             core: Mutex::new(None),
             log_dir,
             discord,
+            import_cancelled: Arc::new(AtomicBool::new(false)),
         })
-        .invoke_handler(tauri::generate_handler![
-            init_sapper,
-            get_imports,
-            get_imports_with_compatibility,
-            import_conversation,
-            load_conversation,
-            delete_import,
-            update_import,
-            get_config,
-            update_config,
-            save_conversation_position,
-            get_conversation_position,
-            load_messages,
-            search_messages,
-            get_total_message_count,
-            get_import_path,
-            get_conversation_info,
-            get_log_directory,
-            get_app_version,
-            get_members,
-            update_member,
-            copy_avatar_to_import,
-            log_frontend_error,
-            log_frontend_warning,
-            log_frontend_info,
-            export_all_conversations,
-            export_selected_conversations,
-            import_backup,
-            import_backup_detailed,
-            check_missing_assets,
-            copy_assets_to_json_dir,
-            check_for_update,
-            download_and_install_update,
-            reimport_conversation,
-            batch_reimport_conversations,
-        ])
+        .invoke_handler(
+            tauri::generate_handler![
+                init_sapper,
+                get_imports,
+                get_imports_with_compatibility,
+                import_conversation,
+                load_conversation,
+                delete_import,
+                update_import,
+                get_config,
+                update_config,
+                save_conversation_position,
+                get_conversation_position,
+                load_messages,
+                search_messages,
+                get_total_message_count,
+                get_import_path,
+                get_conversation_info,
+                get_log_directory,
+                get_app_version,
+                get_members,
+                update_member,
+                copy_avatar_to_import,
+                log_frontend_error,
+                log_frontend_warning,
+                log_frontend_info,
+                export_all_conversations,
+                export_selected_conversations,
+                import_backup,
+                import_backup_detailed,
+                check_missing_assets,
+                copy_assets_to_json_dir,
+                check_for_update,
+                download_and_install_update,
+                reimport_conversation,
+                batch_reimport_conversations,
+                cancel_import,
+                get_import_preview
+            ]
+        )
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
