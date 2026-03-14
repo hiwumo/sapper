@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, FolderOpen, Download, Upload, FileText, Bell, AlertTriangle } from "lucide-react";
+import { X, FolderOpen, Download, Upload, FileText, Bell, AlertTriangle, Bug, Settings2, Palette, Database, Wrench, HardDrive, ChevronRight } from "lucide-react";
 import { themes, saveTheme } from "../themes";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -7,8 +7,18 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useToast } from "./ToastContainer";
 import "./Settings.css";
 
-function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImportComplete, onShowChangelog, currentVersion }) {
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImportComplete, onShowChangelog, currentVersion, debugMode, onDebugModeChange }) {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState("general");
+  const [dataSubTab, setDataSubTab] = useState("storage");
   const [exportMode, setExportMode] = useState("all");
   const [selectedConversations, setSelectedConversations] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -16,6 +26,8 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
   const [appVersion, setAppVersion] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [skipLargeImportWarning, setSkipLargeImportWarning] = useState(false);
+  const [diskUsage, setDiskUsage] = useState(null);
+  const [loadingDiskUsage, setLoadingDiskUsage] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -34,6 +46,23 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
       fetchSettings();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === "data" && dataSubTab === "storage" && !diskUsage) {
+      fetchDiskUsage();
+    }
+  }, [isOpen, activeTab, dataSubTab]);
+
+  const fetchDiskUsage = async () => {
+    setLoadingDiskUsage(true);
+    try {
+      const usage = await invoke("get_disk_usage");
+      setDiskUsage(usage);
+    } catch (error) {
+      console.error("Failed to fetch disk usage:", error);
+    }
+    setLoadingDiskUsage(false);
+  };
 
   if (!isOpen) return null;
 
@@ -70,7 +99,6 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
   const handleExport = async () => {
     try {
-      // Ask user to select a directory
       const selected = await openDialog({
         directory: true,
         multiple: false,
@@ -107,7 +135,6 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
   const handleImport = async () => {
     try {
-      // Ask user to select a directory
       const selected = await openDialog({
         directory: true,
         multiple: false,
@@ -116,14 +143,11 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
       if (!selected) return;
 
-      // Add to queue immediately - user can queue multiple imports
       const importId = Date.now();
       setImportQueue((prev) => [...prev, { id: importId, path: selected, status: "pending" }]);
 
-      // Show initial toast
       toast.info("Import started in background...", 3000);
 
-      // Process import asynchronously
       processImport(importId, selected);
     } catch (error) {
       console.error("Import failed:", error);
@@ -133,20 +157,16 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
 
   const processImport = async (importId, sourcePath) => {
     try {
-      // Update status to processing
       setImportQueue((prev) =>
         prev.map((item) =>
           item.id === importId ? { ...item, status: "processing" } : item
         )
       );
 
-      // Call the detailed import command
       const result = await invoke("import_backup_detailed", { sourcePath });
 
-      // Remove from queue
       setImportQueue((prev) => prev.filter((item) => item.id !== importId));
 
-      // Show detailed results
       if (result.successCount > 0) {
         toast.success(
           `Successfully imported ${result.successCount} conversation(s)!`,
@@ -155,7 +175,6 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
       }
 
       if (result.failedCount > 0) {
-        // Show error summary
         const errorSummary = result.failed
           .slice(0, 3)
           .map((f) => `${f.conversationName}: ${f.error}`)
@@ -172,7 +191,6 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
         toast.info("No new conversations to import (all already exist)");
       }
 
-      // Notify parent to reload imports
       if (onImportComplete && result.successCount > 0) {
         onImportComplete();
       }
@@ -180,69 +198,237 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
       console.error("Import failed:", error);
       toast.error(`Import failed: ${error}`, 8000);
 
-      // Remove from queue
       setImportQueue((prev) => prev.filter((item) => item.id !== importId));
     }
   };
 
-  return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
-          <h2>Settings</h2>
-          <button className="settings-close" onClick={onClose}>
-            <X size={24} />
-          </button>
+  const tabs = [
+    { id: "general", label: "General", icon: Settings2 },
+    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "data", label: "Data", icon: Database },
+    { id: "advanced", label: "Advanced", icon: Wrench },
+  ];
+
+  const renderGeneralTab = () => (
+    <div className="settings-tab-content">
+      <div className="settings-section app-info-section">
+        <h3>About Sapper</h3>
+        <p className="settings-version">
+          Version {currentVersion || appVersion || "loading..."}
+        </p>
+        <button className="changelog-button" onClick={() => { onShowChangelog(); onClose(); }}>
+          <FileText size={18} />
+          View Changelog
+        </button>
+      </div>
+
+      <div className="settings-section">
+        <h3>Notifications</h3>
+        <div className="settings-toggle-list">
+          <label className="settings-toggle">
+            <div className="toggle-info">
+              <Bell size={18} />
+              <div>
+                <span className="toggle-label">Desktop Notifications</span>
+                <span className="toggle-description">
+                  Show notifications when imports or updates complete
+                </span>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={notificationsEnabled}
+              onChange={async (e) => {
+                const val = e.target.checked;
+                setNotificationsEnabled(val);
+                try {
+                  const config = await invoke("get_config");
+                  config.notificationsEnabled = val;
+                  await invoke("update_config", { config });
+                } catch (err) {
+                  console.error("Failed to save notification setting:", err);
+                }
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAppearanceTab = () => (
+    <div className="settings-tab-content">
+      <div className="settings-section">
+        <h3>Theme</h3>
+        <p className="settings-description">
+          Choose your preferred color scheme
+        </p>
+
+        <div className="theme-options">
+          {Object.entries(themes).map(([key, theme]) => (
+            <button
+              key={key}
+              className={`theme-option ${currentTheme === key ? "active" : ""}`}
+              onClick={() => handleThemeChange(key)}
+            >
+              <div className="theme-preview">
+                <div
+                  className="theme-color"
+                  style={{ background: theme.colors.background }}
+                />
+                <div
+                  className="theme-color"
+                  style={{ background: theme.colors.backgroundSecondary }}
+                />
+                <div
+                  className="theme-color"
+                  style={{ background: theme.colors.textPrimary }}
+                />
+              </div>
+              <span className="theme-name">{theme.name}</span>
+              {currentTheme === key && (
+                <div className="theme-check">✓</div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderDiskUsage = () => {
+    if (loadingDiskUsage) {
+      return (
+        <div className="disk-usage-loading">
+          <div className="disk-spinner" />
+          Calculating disk usage...
+        </div>
+      );
+    }
+
+    if (!diskUsage) return null;
+
+    const maxBytes = diskUsage.conversations.length > 0
+      ? diskUsage.conversations[0].totalBytes
+      : 1;
+
+    return (
+      <div className="disk-usage">
+        <div className="disk-total">
+          <HardDrive size={20} />
+          <div className="disk-total-info">
+            <span className="disk-total-label">Total Sapper Usage</span>
+            <span className="disk-total-value">{formatBytes(diskUsage.totalBytes)}</span>
+          </div>
         </div>
 
-        <div className="settings-content">
-          <div className="settings-section app-info">
-            <h3>Sapper</h3>
-            <p className="settings-description version-info">
-              Version {currentVersion || appVersion || "loading..."}
-            </p>
-            <button className="changelog-button" onClick={() => { onShowChangelog(); onClose(); }}>
-              <FileText size={20} />
-              View Changelog
-            </button>
+        <div className="disk-breakdown">
+          <div className="disk-breakdown-row">
+            <span>Conversations</span>
+            <span>{formatBytes(diskUsage.importsBytes)}</span>
           </div>
+          <div className="disk-breakdown-row">
+            <span>Cache</span>
+            <span>{formatBytes(diskUsage.cacheBytes)}</span>
+          </div>
+          <div className="disk-breakdown-row">
+            <span>Logs</span>
+            <span>{formatBytes(diskUsage.logsBytes)}</span>
+          </div>
+        </div>
 
-          <div className="settings-section">
-            <h3>Theme</h3>
-            <p className="settings-description">
-              Choose your preferred color scheme
-            </p>
-
-            <div className="theme-options">
-              {Object.entries(themes).map(([key, theme]) => (
-                <button
-                  key={key}
-                  className={`theme-option ${currentTheme === key ? "active" : ""}`}
-                  onClick={() => handleThemeChange(key)}
-                >
-                  <div className="theme-preview">
+        {diskUsage.conversations.length > 0 && (
+          <div className="disk-conversations">
+            <h4>By Conversation</h4>
+            <div className="disk-conversation-list">
+              {diskUsage.conversations.map((conv) => (
+                <div key={conv.importId} className="disk-conversation-item">
+                  <div className="disk-conv-info">
+                    <span className="disk-conv-name" title={conv.alias}>{conv.alias}</span>
+                    <span className="disk-conv-meta">
+                      {conv.messageCount.toLocaleString()} msgs
+                    </span>
+                  </div>
+                  <div className="disk-conv-bar-container">
                     <div
-                      className="theme-color"
-                      style={{ background: theme.colors.background }}
-                    />
-                    <div
-                      className="theme-color"
-                      style={{ background: theme.colors.backgroundSecondary }}
-                    />
-                    <div
-                      className="theme-color"
-                      style={{ background: theme.colors.textPrimary }}
+                      className="disk-conv-bar"
+                      style={{ width: `${Math.max((conv.totalBytes / maxBytes) * 100, 2)}%` }}
                     />
                   </div>
-                  <span className="theme-name">{theme.name}</span>
-                  {currentTheme === key && (
-                    <div className="theme-check">✓</div>
-                  )}
-                </button>
+                  <span className="disk-conv-size">{formatBytes(conv.totalBytes)}</span>
+                </div>
               ))}
             </div>
           </div>
+        )}
 
+        <button className="disk-refresh-button" onClick={fetchDiskUsage}>
+          Refresh
+        </button>
+      </div>
+    );
+  };
+
+  const renderDataTab = () => (
+    <div className="settings-tab-content">
+      <div className="data-sub-tabs">
+        <button
+          className={`data-sub-tab ${dataSubTab === "storage" ? "active" : ""}`}
+          onClick={() => setDataSubTab("storage")}
+        >
+          Storage
+        </button>
+        <button
+          className={`data-sub-tab ${dataSubTab === "imports-exports" ? "active" : ""}`}
+          onClick={() => setDataSubTab("imports-exports")}
+        >
+          Imports & Exports
+        </button>
+      </div>
+
+      {dataSubTab === "storage" && (
+        <>
+          <div className="settings-section">
+            <h3>Import Behavior</h3>
+            <div className="settings-toggle-list">
+              <label className="settings-toggle">
+                <div className="toggle-info">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <span className="toggle-label">Skip Large Import Warning</span>
+                    <span className="toggle-description">
+                      Don't warn when attachments exceed 3 GB
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={skipLargeImportWarning}
+                  onChange={async (e) => {
+                    const val = e.target.checked;
+                    setSkipLargeImportWarning(val);
+                    try {
+                      const config = await invoke("get_config");
+                      config.skipLargeImportWarning = val;
+                      await invoke("update_config", { config });
+                    } catch (err) {
+                      console.error("Failed to save import warning setting:", err);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Disk Space Usage</h3>
+            {renderDiskUsage()}
+          </div>
+        </>
+      )}
+
+      {dataSubTab === "imports-exports" && (
+        <>
           <div className="settings-section">
             <h3>Export Conversations</h3>
             <p className="settings-description">
@@ -327,80 +513,90 @@ function Settings({ isOpen, onClose, currentTheme, onThemeChange, imports, onImp
               Import Backup
             </button>
           </div>
+        </>
+      )}
+    </div>
+  );
 
-          <div className="settings-section">
-            <h3>Notifications & Imports</h3>
-            <p className="settings-description">
-              Configure notification and import behavior
-            </p>
-
-            <div className="settings-toggle-list">
-              <label className="settings-toggle">
-                <div className="toggle-info">
-                  <Bell size={18} />
-                  <div>
-                    <span className="toggle-label">Desktop Notifications</span>
-                    <span className="toggle-description">
-                      Show notifications when imports or updates complete
-                    </span>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notificationsEnabled}
-                  onChange={async (e) => {
-                    const val = e.target.checked;
-                    setNotificationsEnabled(val);
-                    try {
-                      const config = await invoke("get_config");
-                      config.notificationsEnabled = val;
-                      await invoke("update_config", { config });
-                    } catch (err) {
-                      console.error("Failed to save notification setting:", err);
-                    }
-                  }}
-                />
-              </label>
-
-              <label className="settings-toggle">
-                <div className="toggle-info">
-                  <AlertTriangle size={18} />
-                  <div>
-                    <span className="toggle-label">Skip Large Import Warning</span>
-                    <span className="toggle-description">
-                      Don't warn when attachments exceed 3 GB
-                    </span>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={skipLargeImportWarning}
-                  onChange={async (e) => {
-                    const val = e.target.checked;
-                    setSkipLargeImportWarning(val);
-                    try {
-                      const config = await invoke("get_config");
-                      config.skipLargeImportWarning = val;
-                      await invoke("update_config", { config });
-                    } catch (err) {
-                      console.error("Failed to save import warning setting:", err);
-                    }
-                  }}
-                />
-              </label>
+  const renderAdvancedTab = () => (
+    <div className="settings-tab-content">
+      <div className="settings-section">
+        <h3>Debugging</h3>
+        <div className="settings-toggle-list">
+          <label className="settings-toggle">
+            <div className="toggle-info">
+              <Bug size={18} />
+              <div>
+                <span className="toggle-label">Debug Mode</span>
+                <span className="toggle-description">
+                  Enables trace logging, asset source info, message payload inspection, and chunk debug data
+                </span>
+              </div>
             </div>
+            <input
+              type="checkbox"
+              checked={debugMode}
+              onChange={async (e) => {
+                const val = e.target.checked;
+                onDebugModeChange(val);
+                try {
+                  await invoke("set_debug_mode", { enabled: val });
+                } catch (err) {
+                  console.error("Failed to set debug mode:", err);
+                }
+              }}
+            />
+          </label>
+        </div>
+
+        <button className="open-logs-button" onClick={handleOpenLogs} style={{ marginTop: "1rem" }}>
+          <FolderOpen size={20} />
+          Open Log Folder
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "general": return renderGeneralTab();
+      case "appearance": return renderAppearanceTab();
+      case "data": return renderDataTab();
+      case "advanced": return renderAdvancedTab();
+      default: return renderGeneralTab();
+    }
+  };
+
+  return (
+    <div className="settings-overlay" onClick={onClose}>
+      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-header">
+          <h2>Settings</h2>
+          <button className="settings-close" onClick={onClose}>
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="settings-body">
+          <div className="settings-sidebar">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  className={`settings-tab-button ${activeTab === tab.id ? "active" : ""}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon size={18} />
+                  <span>{tab.label}</span>
+                  <ChevronRight size={14} className="tab-arrow" />
+                </button>
+              );
+            })}
           </div>
 
-          <div className="settings-section">
-            <h3>Logging & Debugging</h3>
-            <p className="settings-description">
-              Access application logs for debugging and troubleshooting
-            </p>
-
-            <button className="open-logs-button" onClick={handleOpenLogs}>
-              <FolderOpen size={20} />
-              Open Log Folder
-            </button>
+          <div className="settings-content">
+            {renderContent()}
           </div>
         </div>
       </div>

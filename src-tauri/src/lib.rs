@@ -7,14 +7,15 @@ mod search;
 mod versioning;
 
 use discord_presence::DiscordPresence;
+use logger::LogReloadHandle;
 use message_storage::StoredMessage;
 use models::*;
 use sapper_core::SapperCore;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{ Arc, Mutex };
 use tauri::{ Emitter, State, Window };
-use tracing::{ debug, error, info, warn };
+use tracing::{ debug, error, info, trace, warn };
 
 // Global state for SapperCore
 struct AppState {
@@ -22,6 +23,7 @@ struct AppState {
     log_dir: PathBuf,
     discord: DiscordPresence,
     import_cancelled: Arc<AtomicBool>,
+    log_reload_handle: LogReloadHandle,
 }
 
 #[tauri::command]
@@ -31,6 +33,15 @@ fn init_sapper(state: State<AppState>) -> Result<(), String> {
         error!("Failed to initialize SapperCore: {}", e);
         e.to_string()
     })?;
+
+    // Restore debug mode from config if previously enabled
+    if let Ok(config) = core.load_config() {
+        if config.debug_mode {
+            info!("Restoring debug mode from config");
+            state.log_reload_handle.set_debug(true);
+        }
+    }
+
     *state.core.lock().unwrap() = Some(core);
     info!("Sapper initialized successfully");
     Ok(())
@@ -198,14 +209,18 @@ fn update_import(state: State<AppState>, import_id: String, alias: String) -> Re
 
 #[tauri::command]
 fn get_config(state: State<AppState>) -> Result<AppConfig, String> {
+    trace!("Getting app config");
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
-    core.load_config().map_err(|e| e.to_string())
+    let config = core.load_config().map_err(|e| e.to_string())?;
+    trace!("Config loaded: theme={}, debug_mode={}, notifications={}", config.theme, config.debug_mode, config.notifications_enabled);
+    Ok(config)
 }
 
 #[tauri::command]
 fn update_config(state: State<AppState>, config: AppConfig) -> Result<(), String> {
+    trace!("Updating app config: theme={}, debug_mode={}", config.theme, config.debug_mode);
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
@@ -278,6 +293,13 @@ fn load_messages(
     })?;
 
     debug!("Successfully loaded {} messages", result.len());
+    trace!(
+        "Message range loaded: IDs {}-{}, {} messages, content lengths: {:?}",
+        result.first().map(|m| m.id).unwrap_or(0),
+        result.last().map(|m| m.id).unwrap_or(0),
+        result.len(),
+        result.iter().map(|m| logger::sanitize_message_content(&m.content)).collect::<Vec<_>>()
+    );
     Ok(result)
 }
 
@@ -330,12 +352,14 @@ fn search_messages(
     })?;
 
     info!("Search returned {} results", result.len());
+    trace!("Search result message IDs: {:?}", result);
     Ok(result)
 }
 
 #[tauri::command]
 fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<usize, String> {
     use std::path::PathBuf;
+    trace!("Getting total message count for: {}", logger::sanitize_string(&import_id));
 
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
@@ -350,6 +374,7 @@ fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<
     let storage = message_storage::MessageStorage::new(import_dir);
 
     let index = storage.load_chunk_index().map_err(|e| e.to_string())?;
+    trace!("Total message count for {}: {}", logger::sanitize_string(&import_id), index.total_messages);
     Ok(index.total_messages)
 }
 
@@ -394,10 +419,12 @@ fn get_app_version() -> String {
 
 #[tauri::command]
 fn get_members(state: State<AppState>, import_id: String) -> Result<serde_json::Value, String> {
+    trace!("Getting members for import: {}", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
 
     let members = core.load_members(&import_id).map_err(|e| e.to_string())?;
+    trace!("Loaded {} members", members.members.len());
     serde_json::to_value(&members).map_err(|e| e.to_string())
 }
 
@@ -451,6 +478,157 @@ fn log_frontend_warning(message: String) {
 #[tauri::command]
 fn log_frontend_info(message: String) {
     info!("[FRONTEND] {}", logger::sanitize_string(&message));
+}
+
+#[tauri::command]
+fn log_frontend_trace(message: String) {
+    trace!("[FRONTEND] {}", logger::sanitize_string(&message));
+}
+
+#[tauri::command]
+fn set_debug_mode(state: State<AppState>, enabled: bool) -> Result<(), String> {
+    info!("Setting debug mode to: {}", enabled);
+    state.log_reload_handle.set_debug(enabled);
+
+    // Also persist to config
+    let core_lock = state.core.lock().unwrap();
+    if let Some(core) = core_lock.as_ref() {
+        let mut config = core.load_config().map_err(|e| e.to_string())?;
+        config.debug_mode = enabled;
+        core.save_config(&config).map_err(|e| e.to_string())?;
+    }
+
+    if enabled {
+        info!("Debug mode ENABLED - trace logging active");
+        trace!("Trace logging is now active");
+    } else {
+        info!("Debug mode DISABLED - returning to info logging");
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_chunk_debug_info(
+    state: State<AppState>,
+    import_id: String,
+) -> Result<serde_json::Value, String> {
+    use std::path::PathBuf;
+
+    trace!("Getting chunk debug info for import: {}", logger::sanitize_string(&import_id));
+
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = PathBuf::from(&import_entry.import_path);
+    let storage = message_storage::MessageStorage::new(import_dir.clone());
+
+    let chunk_index = storage.load_chunk_index().map_err(|e| e.to_string())?;
+
+    // Build debug info
+    let chunks_info: Vec<serde_json::Value> = chunk_index.chunks.iter().map(|chunk| {
+        // Get file size
+        let file_size = std::fs::metadata(&chunk.file_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        serde_json::json!({
+            "chunkId": chunk.chunk_id,
+            "startId": chunk.start_id,
+            "endId": chunk.end_id,
+            "messageCount": chunk.message_count,
+            "filePath": chunk.file_path,
+            "fileSizeBytes": file_size,
+        })
+    }).collect();
+
+    // Check search index
+    let search_index_dir = import_dir.join("search_index");
+    let search_index_exists = search_index_dir.exists();
+    let search_index_size: u64 = if search_index_exists {
+        walkdir::WalkDir::new(&search_index_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.metadata().ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .sum()
+    } else {
+        0
+    };
+
+    Ok(serde_json::json!({
+        "totalMessages": chunk_index.total_messages,
+        "totalChunks": chunk_index.chunks.len(),
+        "chunkSize": 500,
+        "importPath": import_entry.import_path,
+        "searchIndexExists": search_index_exists,
+        "searchIndexSizeBytes": search_index_size,
+        "chunks": chunks_info,
+    }))
+}
+
+fn dir_size(path: &Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
+}
+
+#[tauri::command]
+fn get_disk_usage(state: State<AppState>) -> Result<models::AppDiskUsage, String> {
+    let core_guard = state.core.lock().map_err(|e| e.to_string())?;
+    let core = core_guard.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+
+    let imports_dir = core.sapper_dir.join("imports");
+    let cache_dir = core.sapper_dir.join("cache");
+    let logs_dir = core.sapper_dir.join("logs");
+
+    let cache_bytes = dir_size(&cache_dir);
+    let logs_bytes = dir_size(&logs_dir);
+
+    let mut conversations: Vec<models::ConversationDiskUsage> = metadata
+        .imports
+        .iter()
+        .map(|imp| {
+            let import_dir = imports_dir.join(&imp.id);
+            let total_bytes = dir_size(&import_dir);
+            models::ConversationDiskUsage {
+                import_id: imp.id.clone(),
+                alias: imp.alias.clone(),
+                message_count: imp.message_count,
+                total_bytes,
+            }
+        })
+        .collect();
+
+    // Sort largest first
+    conversations.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+
+    let imports_bytes: u64 = conversations.iter().map(|c| c.total_bytes).sum();
+    let total_bytes = imports_bytes + cache_bytes + logs_bytes;
+
+    Ok(models::AppDiskUsage {
+        total_bytes,
+        imports_bytes,
+        cache_bytes,
+        logs_bytes,
+        conversations,
+    })
 }
 
 #[tauri::command]
@@ -760,9 +938,9 @@ async fn get_import_preview(json_path: String) -> Result<ImportPreview, String> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging first
-    let log_dir = logger::init_logging().unwrap_or_else(|e| {
+    let (log_dir, log_reload_handle) = logger::init_logging().unwrap_or_else(|e| {
         eprintln!("Failed to initialize logging: {}", e);
-        std::path::PathBuf::from(".")
+        (std::path::PathBuf::from("."), LogReloadHandle::noop())
     });
 
     info!("Sapper application starting");
@@ -784,6 +962,7 @@ pub fn run() {
             log_dir,
             discord,
             import_cancelled: Arc::new(AtomicBool::new(false)),
+            log_reload_handle,
         })
         .invoke_handler(
             tauri::generate_handler![
@@ -811,6 +990,9 @@ pub fn run() {
                 log_frontend_error,
                 log_frontend_warning,
                 log_frontend_info,
+                log_frontend_trace,
+                set_debug_mode,
+                get_chunk_debug_info,
                 export_all_conversations,
                 export_selected_conversations,
                 import_backup,
@@ -822,7 +1004,8 @@ pub fn run() {
                 reimport_conversation,
                 batch_reimport_conversations,
                 cancel_import,
-                get_import_preview
+                get_import_preview,
+                get_disk_usage
             ]
         )
         .run(tauri::generate_context!())

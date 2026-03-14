@@ -48,6 +48,7 @@ function AppContent() {
   const [updating, setUpdating] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [currentVersion, setCurrentVersion] = useState(null);
+  const [debugMode, setDebugMode] = useState(false);
 
   // Import state
   const [importState, setImportState] = useState({
@@ -73,6 +74,7 @@ function AppContent() {
   function setupConsoleLogging() {
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
+    const originalConsoleLog = console.log;
 
     console.error = (...args) => {
       originalConsoleError(...args);
@@ -92,6 +94,17 @@ function AppContent() {
         )
         .join(" ");
       invoke("log_frontend_warning", { message }).catch(() => { });
+    };
+
+    // In debug mode, console.log also goes to trace logs
+    console.log = (...args) => {
+      originalConsoleLog(...args);
+      const message = args
+        .map((arg) =>
+          typeof arg === "object" ? JSON.stringify(arg) : String(arg)
+        )
+        .join(" ");
+      invoke("log_frontend_trace", { message }).catch(() => { });
     };
 
     window.addEventListener("error", (event) => {
@@ -123,6 +136,7 @@ function AppContent() {
       setCurrentVersion(version);
 
       const config = await invoke("get_config");
+      setDebugMode(config.debugMode ?? false);
       const lastChangelogVersion = config.lastChangelogVersion;
 
       if (!lastChangelogVersion || lastChangelogVersion !== version) {
@@ -643,6 +657,8 @@ function AppContent() {
         onImportComplete={loadImports}
         onShowChangelog={() => setShowChangelog(true)}
         currentVersion={currentVersion}
+        debugMode={debugMode}
+        onDebugModeChange={setDebugMode}
       />
 
       <main className="content">
@@ -661,6 +677,7 @@ function AppContent() {
             importId={activeView}
             theme={theme}
             key={activeView}
+            debugMode={debugMode}
           />
         )}
       </main>

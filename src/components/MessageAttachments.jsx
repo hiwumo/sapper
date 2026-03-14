@@ -216,7 +216,7 @@ function CustomAudioPlayer({ src, type, fileName }) {
   );
 }
 
-function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsVideo }) {
+function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsVideo, debugMode }) {
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
 
@@ -304,6 +304,11 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                     alt={img.fileName}
                     loading="lazy"
                   />
+                )}
+                {debugMode && (
+                  <div className="debug-asset-source" title={img.ref}>
+                    {img.isDirect ? "URL" : img.ref.split("\\").pop().split("/").pop()}
+                  </div>
                 )}
               </div>
             ))}

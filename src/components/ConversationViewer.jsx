@@ -14,7 +14,15 @@ const MESSAGES_PER_PAGE = 50;
 const MAX_RENDERED_MESSAGES = 150;
 const SEARCH_RESULTS_PER_PAGE = 10;
 
-function ConversationViewer({ importId, theme }) {
+function formatBytes(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+function ConversationViewer({ importId, theme, debugMode }) {
   const toast = useToast();
   const themeColors = themes[theme]?.colors || themes.dark.colors;
   const [messages, _setMessages] = useState([]);
@@ -36,6 +44,9 @@ function ConversationViewer({ importId, theme }) {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [afterDate, setAfterDate] = useState("");
   const [beforeDate, setBeforeDate] = useState("");
+  const [rawPayloadMessage, setRawPayloadMessage] = useState(null);
+  const [chunkDebugInfo, setChunkDebugInfo] = useState(null);
+  const [chunkDebugExpanded, setChunkDebugExpanded] = useState(false);
   const [afterTimestamp, setAfterTimestamp] = useState(null);
   const [beforeTimestamp, setBeforeTimestamp] = useState(null);
 
@@ -125,6 +136,23 @@ function ConversationViewer({ importId, theme }) {
       loadMembers();
     }
   }, [importId]);
+
+  // Load chunk debug info when debug mode is enabled
+  useEffect(() => {
+    if (!debugMode || !importId) {
+      setChunkDebugInfo(null);
+      return;
+    }
+    const loadChunkDebug = async () => {
+      try {
+        const info = await invoke("get_chunk_debug_info", { importId });
+        setChunkDebugInfo(info);
+      } catch (error) {
+        console.error("Failed to load chunk debug info:", error);
+      }
+    };
+    loadChunkDebug();
+  }, [debugMode, importId]);
 
   // Create member lookup map by author ID
   const memberLookup = useMemo(() => {
@@ -299,7 +327,9 @@ function ConversationViewer({ importId, theme }) {
         }
         // isLoadingMore is cleared in the useLayoutEffect after scroll restoration
         setMessages((prev) => {
-          const combined = [...newMessages, ...prev];
+          const existingIds = new Set(prev.map(m => m.id));
+          const deduped = newMessages.filter(m => !existingIds.has(m.id));
+          const combined = [...deduped, ...prev];
           // Trim from the bottom to keep DOM size bounded
           if (combined.length > MAX_RENDERED_MESSAGES) {
             return combined.slice(0, MAX_RENDERED_MESSAGES);
@@ -308,7 +338,9 @@ function ConversationViewer({ importId, theme }) {
         });
       } else {
         setMessages((prev) => {
-          const combined = [...prev, ...newMessages];
+          const existingIds = new Set(prev.map(m => m.id));
+          const deduped = newMessages.filter(m => !existingIds.has(m.id));
+          const combined = [...prev, ...deduped];
           // Trim from the top to keep DOM size bounded
           if (combined.length > MAX_RENDERED_MESSAGES) {
             return combined.slice(combined.length - MAX_RENDERED_MESSAGES);
@@ -791,6 +823,8 @@ function ConversationViewer({ importId, theme }) {
                   formatTimestamp={formatTimestamp}
                   convertFileSrc={convertFileSrc}
                   onReplyClick={jumpToMessage}
+                  debugMode={debugMode}
+                  onShowRawPayload={setRawPayloadMessage}
                 />
               </div>
             );
@@ -861,6 +895,8 @@ function ConversationViewer({ importId, theme }) {
                             formatTimestamp={formatTimestamp}
                             convertFileSrc={convertFileSrc}
                             onReplyClick={jumpToMessage}
+                            debugMode={debugMode}
+                            onShowRawPayload={setRawPayloadMessage}
                           />
                         </div>
                         <button
@@ -920,7 +956,7 @@ function ConversationViewer({ importId, theme }) {
               <div className="member-list-header">
                 Members—{members.length}
               </div>
-              <div className="member-list-content">
+              <div className={`member-list-content ${debugMode && chunkDebugInfo ? "member-list-split" : ""}`}>
                 {members.map((member, idx) => (
                   <div
                     key={idx}
@@ -942,6 +978,69 @@ function ConversationViewer({ importId, theme }) {
                   </div>
                 ))}
               </div>
+
+              {/* Chunk Debug Panel - only visible in debug mode */}
+              {debugMode && chunkDebugInfo && (
+                <div className="chunk-debug-panel">
+                  <div
+                    className="chunk-debug-header"
+                    onClick={() => setChunkDebugExpanded(!chunkDebugExpanded)}
+                  >
+                    <span className="chunk-debug-title">
+                      {chunkDebugExpanded ? "▾" : "▸"} Tantivy / Chunk Debug
+                    </span>
+                    <span className="chunk-debug-summary">
+                      {chunkDebugInfo.totalChunks} chunks
+                    </span>
+                  </div>
+                  {chunkDebugExpanded && (
+                    <div className="chunk-debug-content">
+                      <div className="chunk-debug-overview">
+                        <div className="chunk-debug-row">
+                          <span className="chunk-debug-label">Total Messages</span>
+                          <span className="chunk-debug-value">{chunkDebugInfo.totalMessages.toLocaleString()}</span>
+                        </div>
+                        <div className="chunk-debug-row">
+                          <span className="chunk-debug-label">Chunk Size</span>
+                          <span className="chunk-debug-value">{chunkDebugInfo.chunkSize}</span>
+                        </div>
+                        <div className="chunk-debug-row">
+                          <span className="chunk-debug-label">Total Chunks</span>
+                          <span className="chunk-debug-value">{chunkDebugInfo.totalChunks}</span>
+                        </div>
+                        <div className="chunk-debug-row">
+                          <span className="chunk-debug-label">Search Index</span>
+                          <span className="chunk-debug-value">
+                            {chunkDebugInfo.searchIndexExists
+                              ? formatBytes(chunkDebugInfo.searchIndexSizeBytes)
+                              : "Missing"}
+                          </span>
+                        </div>
+                        <div className="chunk-debug-row">
+                          <span className="chunk-debug-label">Import Path</span>
+                          <span className="chunk-debug-value chunk-debug-path" title={chunkDebugInfo.importPath}>
+                            {chunkDebugInfo.importPath}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="chunk-debug-list-header">Chunks</div>
+                      <div className="chunk-debug-list">
+                        {chunkDebugInfo.chunks.map((chunk) => (
+                          <div key={chunk.chunkId} className="chunk-debug-item">
+                            <div className="chunk-debug-item-header">
+                              <span className="chunk-debug-chunk-id">#{chunk.chunkId}</span>
+                              <span className="chunk-debug-chunk-size">{formatBytes(chunk.fileSizeBytes)}</span>
+                            </div>
+                            <div className="chunk-debug-item-detail">
+                              IDs {chunk.startId}–{chunk.endId} ({chunk.messageCount} msgs)
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -990,6 +1089,24 @@ function ConversationViewer({ importId, theme }) {
           }
         }}
       />
+
+      {/* Raw Payload Modal (Debug Mode) */}
+      {rawPayloadMessage && (
+        <div className="raw-payload-overlay" onClick={() => setRawPayloadMessage(null)}>
+          <div className="raw-payload-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="raw-payload-header">
+              <h3>Raw Message Payload</h3>
+              <span className="raw-payload-id">ID: {rawPayloadMessage.id} | Original: {rawPayloadMessage.originalId}</span>
+              <button className="raw-payload-close" onClick={() => setRawPayloadMessage(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <pre className="raw-payload-content">
+              {JSON.stringify(rawPayloadMessage, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

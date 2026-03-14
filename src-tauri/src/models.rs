@@ -183,6 +183,8 @@ pub struct AppConfig {
     pub notifications_enabled: bool,
     #[serde(default)]
     pub skip_large_import_warning: bool,
+    #[serde(default)]
+    pub debug_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +202,7 @@ impl Default for AppConfig {
             last_changelog_version: None,
             notifications_enabled: true,
             skip_large_import_warning: false,
+            debug_mode: false,
         }
     }
 }
@@ -214,6 +217,26 @@ pub struct ImportPreview {
     pub message_count: usize,
     pub json_size: u64,
     pub attachments_size: u64,
+}
+
+// Disk usage structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationDiskUsage {
+    pub import_id: String,
+    pub alias: String,
+    pub message_count: usize,
+    pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppDiskUsage {
+    pub total_bytes: u64,
+    pub imports_bytes: u64,
+    pub cache_bytes: u64,
+    pub logs_bytes: u64,
+    pub conversations: Vec<ConversationDiskUsage>,
 }
 
 // Import backup result structures

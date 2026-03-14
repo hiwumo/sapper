@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import MessageAvatar from "./MessageAvatar";
 import MessageReply from "./MessageReply";
 import MessageStickers from "./MessageStickers";
@@ -314,7 +315,25 @@ function processContent(message, importPath, convertFileSrc) {
   return processedParts.flat().filter(p => p !== null);
 }
 
-function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick }) {
+function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload }) {
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+  const contextMenuRef = useRef(null);
+
+  const handleContextMenu = (e) => {
+    if (!debugMode) return;
+    e.preventDefault();
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    setShowContextMenu(true);
+  };
+
+  useEffect(() => {
+    if (!showContextMenu) return;
+    const handleClick = () => setShowContextMenu(false);
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [showContextMenu]);
+
   // Check if this is a system message (like pinned messages)
   const isSystemMessage = message.type === "ChannelPinnedMessage" ||
                           message.type === "RecipientAdd" ||
@@ -341,11 +360,22 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     }
 
     return (
-      <div className="system-message">
+      <div className="system-message" onContextMenu={handleContextMenu}>
         <div className="system-message-content">
           <span className="system-message-text">{systemText}</span>
           <span className="system-message-timestamp">{formatTimestamp(message.timestamp)}</span>
         </div>
+        {showContextMenu && (
+          <div
+            className="debug-context-menu"
+            ref={contextMenuRef}
+            style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
+          >
+            <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
+              View Raw Payload
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -390,7 +420,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           importPath={importPath}
           onReplyClick={onReplyClick}
         />
-    <div className={`message ${isGrouped ? "grouped" : ""}`}>
+    <div className={`message ${isGrouped ? "grouped" : ""}`} onContextMenu={handleContextMenu}>
 
       {!isGrouped && (
         <MessageAvatar
@@ -408,6 +438,11 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
             <span className="message-timestamp">
               {formatTimestamp(message.timestamp)}
             </span>
+            {debugMode && (
+              <span className="debug-message-id" title="Internal message ID">
+                #{message.id}
+              </span>
+            )}
           </div>
         )}
         {message.content && message.content.length > 0 && !shouldHideContent && (
@@ -429,6 +464,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           onImageClick={onImageClick}
           directImageUrl={resolvedDirectUrl}
           directIsVideo={resolvedIsVideo}
+          debugMode={debugMode}
         />
         {!onlyTenorUrl && !onlyGiphyUrl && !hasLocalGif && (
           <MessageEmbeds
@@ -437,6 +473,18 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           />
         )}
       </div>
+
+      {showContextMenu && (
+        <div
+          className="debug-context-menu"
+          ref={contextMenuRef}
+          style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
+        >
+          <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
+            View Raw Payload
+          </button>
+        </div>
+      )}
     </div>
     </>
   );

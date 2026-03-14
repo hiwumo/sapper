@@ -1,11 +1,34 @@
 use regex::Regex;
 use std::path::PathBuf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, reload};
+
+/// Handle for dynamically reloading the log level filter at runtime.
+pub struct LogReloadHandle {
+    handle: Option<reload::Handle<EnvFilter, tracing_subscriber::Registry>>,
+}
+
+impl LogReloadHandle {
+    /// Create a no-op handle (used as fallback when logging init fails).
+    pub fn noop() -> Self {
+        Self { handle: None }
+    }
+
+    /// Switch between debug mode (trace level) and normal mode (info level).
+    pub fn set_debug(&self, enabled: bool) {
+        if let Some(ref handle) = self.handle {
+            let filter = if enabled { "trace" } else { "info" };
+            if let Err(e) = handle.reload(EnvFilter::new(filter)) {
+                eprintln!("Failed to reload log filter: {}", e);
+            }
+        }
+    }
+}
 
 /// Initialize the logging system
 /// Logs will be written to a rotating daily log file in the .sapper directory
-pub fn init_logging() -> Result<PathBuf, Box<dyn std::error::Error>> {
+/// Returns the log directory path and a handle for dynamically changing log levels.
+pub fn init_logging() -> Result<(PathBuf, LogReloadHandle), Box<dyn std::error::Error>> {
     let home_dir = directories::BaseDirs::new()
         .ok_or("Failed to get home directory")?
         .home_dir()
@@ -17,9 +40,13 @@ pub fn init_logging() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Create a rolling file appender that creates a new log file daily
     let file_appender = RollingFileAppender::new(Rotation::DAILY, &log_dir, "sapper.log");
 
+    // Create a reloadable filter layer so we can switch between info and trace at runtime
+    let initial_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter_layer, reload_handle) = reload::Layer::new(initial_filter);
+
     // Set up the logging subscriber with both file and stdout outputs
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(filter_layer)
         .with(
             fmt::layer()
                 .with_writer(file_appender)
@@ -30,7 +57,9 @@ pub fn init_logging() -> Result<PathBuf, Box<dyn std::error::Error>> {
         .with(fmt::layer().with_writer(std::io::stdout).with_target(false))
         .init();
 
-    Ok(log_dir)
+    let handle = LogReloadHandle { handle: Some(reload_handle) };
+
+    Ok((log_dir, handle))
 }
 
 /// Sanitize personal information from strings
@@ -67,6 +96,49 @@ pub fn sanitize_string(input: &str) -> String {
     result
 }
 
+/// Sanitize message content specifically
+/// Replaces actual message text with [REDACTED] but preserves emojis and metadata
+pub fn sanitize_message_content(content: &str) -> String {
+    if content.is_empty() {
+        return content.to_string();
+    }
+
+    // Extract emojis (unicode emoji characters)
+    let emoji_regex = Regex::new(
+        r"[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]"
+    ).unwrap();
+    let emojis: Vec<&str> = emoji_regex.find_iter(content).map(|m| m.as_str()).collect();
+
+    // Extract Discord custom emojis <:name:id> or <a:name:id>
+    let discord_emoji_regex = Regex::new(r"<a?:[a-zA-Z0-9_]+:\d+>").unwrap();
+    let discord_emojis: Vec<&str> = discord_emoji_regex
+        .find_iter(content)
+        .map(|m| m.as_str())
+        .collect();
+
+    if !emojis.is_empty() || !discord_emojis.is_empty() {
+        let mut sanitized = "[REDACTED".to_string();
+        if !emojis.is_empty() {
+            sanitized.push_str(" emojis:");
+            for emoji in emojis {
+                sanitized.push(' ');
+                sanitized.push_str(emoji);
+            }
+        }
+        if !discord_emojis.is_empty() {
+            sanitized.push_str(" stickers:");
+            for emoji in discord_emojis {
+                sanitized.push(' ');
+                sanitized.push_str(emoji);
+            }
+        }
+        sanitized.push(']');
+        sanitized
+    } else {
+        "[REDACTED]".to_string()
+    }
+}
+
 /// Simple hash function for consistent anonymization
 /// Uses a simple hash to ensure the same input always produces the same output
 fn simple_hash(input: &str) -> String {
@@ -80,49 +152,6 @@ fn simple_hash(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Sanitize message content specifically
-    /// Replaces actual message text with [REDACTED] but preserves emojis and metadata
-    pub fn sanitize_message_content(content: &str) -> String {
-        if content.is_empty() {
-            return content.to_string();
-        }
-
-        // Extract emojis (unicode emoji characters)
-        let emoji_regex = Regex::new(
-            r"[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}-\u{2454}\u{20D0}-\u{20FF}]"
-        ).unwrap();
-        let emojis: Vec<&str> = emoji_regex.find_iter(content).map(|m| m.as_str()).collect();
-
-        // Extract Discord custom emojis <:name:id> or <a:name:id>
-        let discord_emoji_regex = Regex::new(r"<a?:[a-zA-Z0-9_]+:\d+>").unwrap();
-        let discord_emojis: Vec<&str> = discord_emoji_regex
-            .find_iter(content)
-            .map(|m| m.as_str())
-            .collect();
-
-        if !emojis.is_empty() || !discord_emojis.is_empty() {
-            let mut sanitized = "[REDACTED".to_string();
-            if !emojis.is_empty() {
-                sanitized.push_str(" emojis:");
-                for emoji in emojis {
-                    sanitized.push(' ');
-                    sanitized.push_str(emoji);
-                }
-            }
-            if !discord_emojis.is_empty() {
-                sanitized.push_str(" stickers:");
-                for emoji in discord_emojis {
-                    sanitized.push(' ');
-                    sanitized.push_str(emoji);
-                }
-            }
-            sanitized.push(']');
-            sanitized
-        } else {
-            "[REDACTED]".to_string()
-        }
-    }
 
     /// Sanitize username/nickname
     pub fn sanitize_username(username: &str) -> String {
