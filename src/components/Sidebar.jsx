@@ -1,7 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Plus, Settings, AlertTriangle, X, HelpCircle } from "lucide-react";
 import SidebarItem from "./SidebarItem";
 import "./Sidebar.css";
+
+function reorder(items, fromIndex, toIndex) {
+  if (fromIndex === toIndex) return null;
+  const reordered = [...items];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+  return reordered;
+}
 
 function Sidebar({
   imports,
@@ -19,49 +27,112 @@ function Sidebar({
   onGuideClick,
 }) {
   const [showOutdatedBanner, setShowOutdatedBanner] = useState(true);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-  const dragItemIndex = useRef(null);
+  const [dragItemIdx, setDragItemIdx] = useState(null);
+  const [targetIdx, setTargetIdx] = useState(null);
+
+  const dragItemIndexRef = useRef(null);
+  const targetIdxRef = useRef(null);
+  const importsRef = useRef(imports);
+  const onReorderRef = useRef(onReorder);
+  const wrapperRefs = useRef([]);
+  // Snapshot of item midpoints taken at drag start — immune to reorder shifting
+  const slotMidpoints = useRef([]);
+
+  importsRef.current = imports;
+  onReorderRef.current = onReorder;
 
   const outdatedCount = incompatibleImports.length;
 
-  const handleDragStart = (index) => {
-    dragItemIndex.current = index;
-  };
+  const resetDrag = useCallback(() => {
+    setDragItemIdx(null);
+    setTargetIdx(null);
+    dragItemIndexRef.current = null;
+    targetIdxRef.current = null;
+    slotMidpoints.current = [];
+  }, []);
 
-  const handleDragOver = (e, index) => {
-    e.preventDefault();
-    if (dragItemIndex.current === null) return;
-    setDragOverIndex(index);
-  };
+  const handleMouseMove = useCallback((e) => {
+    if (dragItemIndexRef.current === null) return;
+    const fromIndex = dragItemIndexRef.current;
+    const midpoints = slotMidpoints.current;
+    if (midpoints.length === 0) return;
 
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-  };
+    // Find which slot the cursor belongs to
+    let newTarget = fromIndex;
+    const y = e.clientY;
 
-  const handleDrop = (e, dropIndex) => {
-    e.preventDefault();
-    const fromIndex = dragItemIndex.current;
-    if (fromIndex === null || fromIndex === dropIndex) {
-      setDragOverIndex(null);
-      dragItemIndex.current = null;
-      return;
+    if (y <= midpoints[0]) {
+      newTarget = 0;
+    } else if (y >= midpoints[midpoints.length - 1]) {
+      newTarget = midpoints.length - 1;
+    } else {
+      for (let i = 0; i < midpoints.length - 1; i++) {
+        if (y >= midpoints[i] && y < midpoints[i + 1]) {
+          // Closer to i or i+1?
+          newTarget = (y - midpoints[i] < midpoints[i + 1] - y) ? i : i + 1;
+          break;
+        }
+      }
     }
 
-    const reordered = [...imports];
-    const [moved] = reordered.splice(fromIndex, 1);
-    reordered.splice(dropIndex, 0, moved);
+    if (newTarget !== targetIdxRef.current) {
+      targetIdxRef.current = newTarget;
+      setTargetIdx(newTarget);
+    }
+  }, []);
 
-    const orderedIds = reordered.map((imp) => imp.id);
-    onReorder(orderedIds);
+  const handleMouseUp = useCallback(() => {
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
 
-    setDragOverIndex(null);
-    dragItemIndex.current = null;
+    const fromIndex = dragItemIndexRef.current;
+    const toIndex = targetIdxRef.current;
+
+    if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
+      const reordered = reorder(importsRef.current, fromIndex, toIndex);
+      if (reordered) {
+        const orderedIds = reordered.map((imp) => imp.id);
+        onReorderRef.current(orderedIds);
+      }
+    }
+
+    resetDrag();
+  }, [handleMouseMove, resetDrag]);
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
+  const handleGripMouseDown = (index) => {
+    // Snapshot midpoints of all items before anything moves
+    const midpoints = [];
+    for (let i = 0; i < imports.length; i++) {
+      const el = wrapperRefs.current[i];
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        midpoints.push(rect.top + rect.height / 2);
+      }
+    }
+    slotMidpoints.current = midpoints;
+
+    dragItemIndexRef.current = index;
+    targetIdxRef.current = index;
+    setDragItemIdx(index);
+    setTargetIdx(index);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
-  const handleDragEnd = () => {
-    setDragOverIndex(null);
-    dragItemIndex.current = null;
-  };
+  // Compute the visual order preview during drag
+  const displayImports = useMemo(() => {
+    if (dragItemIdx === null || targetIdx === null || dragItemIdx === targetIdx) {
+      return imports;
+    }
+    return reorder(imports, dragItemIdx, targetIdx) || imports;
+  }, [imports, dragItemIdx, targetIdx]);
 
   return (
     <div className="sidebar">
@@ -110,7 +181,7 @@ function Sidebar({
         </div>
       )}
 
-      <div className="sidebar-list" onDragEnd={handleDragEnd}>
+      <div className="sidebar-list">
         {imports.length === 0 ? (
           <div className="sidebar-empty">
             <p>No conversations yet</p>
@@ -119,33 +190,34 @@ function Sidebar({
             </button>
           </div>
         ) : (
-          imports.map((imp, index) => (
-            <div
-              key={imp.id}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, index)}
-            >
-              {dragOverIndex === index && dragItemIndex.current !== index && (
-                <div className="sidebar-drop-indicator" />
-              )}
-              <SidebarItem
-                importEntry={imp}
-                isActive={activeView === imp.id}
-                isOutdated={
-                  !imp.compatibility?.isCompatible &&
-                  imp.compatibility?.needsUpdate
-                }
-                onClick={() => onOpenConversation(imp.id)}
-                onEdit={() => onEditImport(imp)}
-                onDelete={() => onDeleteImport(imp.id)}
-                onExport={() => onExportConversation(imp.id)}
-                onInfo={() => onInfoClick(imp)}
-                onDragStart={() => handleDragStart(index)}
-                index={index}
-              />
-            </div>
-          ))
+          displayImports.map((imp) => {
+            const isDragged = dragItemIdx !== null && imp === imports[dragItemIdx];
+            // Use stable index from original array for refs
+            const origIdx = imports.indexOf(imp);
+            return (
+              <div
+                key={imp.id}
+                className="sidebar-item-wrapper"
+                ref={(el) => { wrapperRefs.current[origIdx] = el; }}
+              >
+                <SidebarItem
+                  importEntry={imp}
+                  isActive={activeView === imp.id}
+                  isOutdated={
+                    !imp.compatibility?.isCompatible &&
+                    imp.compatibility?.needsUpdate
+                  }
+                  isDragging={isDragged}
+                  onClick={() => onOpenConversation(imp.id)}
+                  onEdit={() => onEditImport(imp)}
+                  onDelete={() => onDeleteImport(imp.id)}
+                  onExport={() => onExportConversation(imp.id)}
+                  onInfo={() => onInfoClick(imp)}
+                  onGripMouseDown={() => handleGripMouseDown(origIdx)}
+                />
+              </div>
+            );
+          })
         )}
       </div>
     </div>

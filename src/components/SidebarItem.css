@@ -3,9 +3,10 @@
   align-items: center;
   gap: 0.65rem;
   padding: 0.5rem 0.6rem;
+  padding-left: 0.25rem;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, opacity 0.15s ease;
   position: relative;
   user-select: none;
 }
@@ -20,6 +21,38 @@
 
 .sidebar-item.outdated {
   opacity: 0.7;
+}
+
+.sidebar-item.dragging {
+  opacity: 0.35;
+}
+
+.sidebar-item-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  align-self: stretch;
+  flex-shrink: 0;
+  color: var(--textMuted);
+  opacity: 0;
+  cursor: grab;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  border-radius: 3px;
+  margin-right: -0.2rem;
+}
+
+.sidebar-item:hover .sidebar-item-drag-handle {
+  opacity: 0.4;
+}
+
+.sidebar-item .sidebar-item-drag-handle:hover {
+  opacity: 1;
+  color: var(--textPrimary);
+}
+
+.sidebar-item-drag-handle:active {
+  cursor: grabbing;
 }
 
 .sidebar-item-avatar {

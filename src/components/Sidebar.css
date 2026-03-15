@@ -145,9 +145,6 @@
   background: #4752c4;
 }
 
-.sidebar-drop-indicator {
-  height: 2px;
-  background: #5865f2;
-  border-radius: 1px;
-  margin: 0 0.5rem;
+.sidebar-item-wrapper {
+  position: relative;
 }

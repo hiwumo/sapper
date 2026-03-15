@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { MoreVertical, AlertTriangle } from "lucide-react";
+import { MoreVertical, AlertTriangle, GripVertical } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import DropdownMenu from "./DropdownMenu";
 import "./SidebarItem.css";
@@ -13,7 +13,8 @@ function SidebarItem({
   onDelete,
   onExport,
   onInfo,
-  onDragStart,
+  onGripMouseDown,
+  isDragging,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef(null);
@@ -51,14 +52,20 @@ function SidebarItem({
 
   return (
     <div
-      className={`sidebar-item ${isActive ? "active" : ""} ${isOutdated ? "outdated" : ""}`}
+      className={`sidebar-item ${isActive ? "active" : ""} ${isOutdated ? "outdated" : ""} ${isDragging ? "dragging" : ""}`}
       onClick={onClick}
-      draggable={true}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart();
-      }}
     >
+      <div
+        className="sidebar-item-drag-handle"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onGripMouseDown(e);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical size={14} />
+      </div>
+
       <div className="sidebar-item-avatar">
         {avatarSrc ? (
           <img src={avatarSrc} alt="" />
