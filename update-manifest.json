@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSExudUFyTkVKSW53NWhKbUpxcFRGbktGQkgzNTE4d1krUlZWMGJMWlRDVTBGRG5IT1JuN2JBaUtyU3NSRFVIUlg5OTVnL2xTcWpwRUlaamhJcjV5OEtnRXJSTXdNMndNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTMzNTEyCWZpbGU6c2FwcGVyXzAuNC4wX3g2NC1zZXR1cC5leGUKb1JDZnlHcEt3Z1NaYTBadjd6aFNWUTNrQTY1T2JXWGJtZCt6STN1cFcydktoYXgyMW9zTVg1OXFHRkpkOU1qaVhJSWRNVVBpUUMzN3N6TER1bURoQ3c9PQo=",
-                                             "url":  "https://github.com/hiwumo/sapper/releases/download/v0.4.0/sapper_0.4.0_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSExudUFyTkVKSXMySkwzRzdHbmNvMzFqRnJheEY3dmh2aG4weWVQVXJtYTdNVEx3NHpKTGNXRllJdVdLWWpobytjVXBpdEg5dlpJVHgzVEVROFdaajFoY2tGMGw0Z1F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTQ4MTY5CWZpbGU6c2FwcGVyXzAuNC4xX3g2NC1zZXR1cC5leGUKbmFUQjZoOHBlN2FyRWZPNGJ1U3M3Y2hSNzgveDE1N0Z0dWtmSk54Y0t4T2pHVmNoY3BHVFAyVExaSUFVbnBTWjZ0VThmcWRQb2JXWlR3QjNKSkpGQUE9PQo=",
+                                             "url":  "https://github.com/hiwumo/sapper/releases/download/v0.4.1/sapper_0.4.1_x64-setup.exe"
                                          }
                   },
-    "pub_date":  "2026-03-15T00:11:53Z",
-    "version":  "0.4.0",
+    "pub_date":  "2026-03-15T04:16:11Z",
+    "version":  "0.4.1",
     "notes":  "Bug fixes and improvements"
 }
