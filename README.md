@@ -11,19 +11,22 @@ The design for this app promises to:
 2. Keep copies of your chats and assets
 3. Be easy to use -- similar to Discord itself!
 
-## Features
-
-- **Import Discord Exports**: Load JSON conversation files with automatic asset validation
-- **Full-Text Search**: Fast search across all messages using an indexed search system
-- **Message Virtualization**: Efficiently handle large conversations with thousands of messages
-- **Asset Management**: Automatic detection and copying of missing conversation assets (images, attachments)
-- **Export/Import**: Backup and restore all conversations or selected ones
-- **Themes**: Multiple color schemes for message display
-- **Logging**: Comprehensive logging system for debugging with privacy protection
-
 ## Setup
 
-Simply go to releases and download the latest version! Currently only Windows 10/11 is supported.
+Simply go to [releases](https://github.com/hiwumo/sapper/releases) and download the latest version! Currently only Windows 10/11 is supported.
+
+**Latest version right now**: [v0.4.0](https://github.com/hiwumo/sapper/releases/download/v0.4.0/sapper_0.4.0_x64-setup.exe)
+
+## Usage
+
+> [!NOTE] 
+> The app has a built-in guide! Click on the question mark on the top-left for an in-depth explanation for everything.
+
+1. Export a conversation from Discord using Discord Chat Exporter
+2. Click "Import Conversation" in Sapper
+3. Select the exported JSON file
+4. If assets are missing, you'll be prompted to select the folder containing them
+5. The conversation will be processed and indexed for searching
 
 ## Installation (for nerds)
 
@@ -96,15 +99,6 @@ make clean         # Remove build artifacts
 
 The app includes automatic update functionality - users will be notified when new versions are available.
 
-## Usage
-
-
-1. Export a conversation from Discord using Discord Chat Exporter or similar tools
-2. Click "Import Conversation" in Sapper
-3. Select the exported JSON file
-4. If assets are missing, you'll be prompted to select the folder containing them
-5. The conversation will be processed and indexed for searching
-
 ## Data Storage
 
 Sapper stores all data in `~/.sapper/`:
@@ -140,3 +134,6 @@ Modify through Settings UI or edit the file directly (requires app restart).
 Sapper operates entirely locally. No data is transmitted to external servers. Log files sanitize personal information while maintaining debugging utility.
 
 Thanks to Claude for this README ^-^
+
+> [!WARNING] 
+> Versions v0.3.1 and earlier have been pulled (security reasons). Make sure to keep Sapper up to date!
