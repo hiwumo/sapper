@@ -819,6 +819,26 @@ impl SapperCore {
                 self.copy_directory(&source_import_dir, &dest_import_dir)?;
             }
 
+            // Rebuild chunks and search index so paths use the new import directory
+            let export_path = dest_import_dir.join("export.json");
+            if export_path.exists() {
+                if let Ok(export_data) = self.parse_export(&export_path) {
+                    if let Ok(stored_messages) = self.convert_messages_to_stored(&export_data, &dest_import_dir) {
+                        let storage = MessageStorage::new(dest_import_dir.clone());
+                        let _ = storage.create_chunks(stored_messages.clone());
+
+                        let index_dir = dest_import_dir.join("search_index");
+                        if index_dir.exists() {
+                            let _ = fs::remove_dir_all(&index_dir);
+                        }
+                        let _ = fs::create_dir_all(&index_dir);
+                        if let Ok(search_index) = MessageSearchIndex::create(&index_dir) {
+                            let _ = search_index.index_messages(&stored_messages);
+                        }
+                    }
+                }
+            }
+
             // Create new entry with new ID and path
             let new_entry = ImportEntry {
                 id: new_id.clone(),
@@ -941,6 +961,26 @@ impl SapperCore {
             return Err(
                 io::Error::new(io::ErrorKind::NotFound, "Import directory not found in backup")
             );
+        }
+
+        // Rebuild chunks and search index so paths use the new import directory
+        // (copied chunks contain absolute paths baked with the old UUID)
+        let export_path = dest_import_dir.join("export.json");
+        if export_path.exists() {
+            let export_data = self.parse_export(&export_path)?;
+            let stored_messages = self.convert_messages_to_stored(&export_data, &dest_import_dir)?;
+
+            let storage = MessageStorage::new(dest_import_dir.clone());
+            storage.create_chunks(stored_messages.clone())?;
+
+            // Rebuild search index
+            let index_dir = dest_import_dir.join("search_index");
+            if index_dir.exists() {
+                fs::remove_dir_all(&index_dir)?;
+            }
+            fs::create_dir_all(&index_dir)?;
+            let search_index = MessageSearchIndex::create(&index_dir)?;
+            search_index.index_messages(&stored_messages)?;
         }
 
         // Create new entry with new ID and path

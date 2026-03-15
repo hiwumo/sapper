@@ -2,6 +2,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { Download, ChevronLeft, ChevronRight, X, Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
+import { reportAssetFail } from "../assetCheck";
 
 function VolumeSlider({ volume, muted, onVolumeChange, onToggleMute, iconSize = 16 }) {
   const trackRef = useRef(null);
@@ -110,7 +111,7 @@ function CustomVideoPlayer({ src, type }) {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
-        onError={(e) => console.warn(`[ASSET_FAIL] video player error: ${src.split("/").pop()} - ${e.target.error?.message || "unknown"}`)}
+        onError={(e) => reportAssetFail(`video player error (${e.target.error?.message || "unknown"})`, src)}
       >
         <source src={src} type={type} />
       </video>
@@ -193,7 +194,7 @@ function CustomAudioPlayer({ src, type, fileName }) {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
-        onError={(e) => console.warn(`[ASSET_FAIL] audio player error: ${fileName || src.split("/").pop()} - ${e.target.error?.message || "unknown"}`)}
+        onError={(e) => reportAssetFail(`audio player error (${e.target.error?.message || "unknown"})`, src)}
       >
         <source src={src} type={type} />
       </audio>
@@ -319,14 +320,14 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                     loop
                     muted
                     playsInline
-                    onError={() => debugMode && console.warn(`[ASSET_FAIL] video failed to load: ${img.fileName || img.ref.split("/").pop()}`)}
+                    onError={() => reportAssetFail("video failed to load", img.ref)}
                   />
                 ) : (
                   <img
                     src={img.isDirect ? img.ref : getAttachmentUrl(img.ref)}
                     alt={img.fileName}
                     loading="lazy"
-                    onError={() => debugMode && console.warn(`[ASSET_FAIL] image failed to load: ${img.fileName}`)}
+                    onError={() => reportAssetFail("image failed to load", img.isDirect ? img.ref : img.ref)}
                   />
                 )}
                 {debugMode && (
@@ -410,13 +411,13 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                   loop
                   muted
                   playsInline
-                  onError={() => debugMode && console.warn(`[ASSET_FAIL] carousel video failed: ${images[carouselIndex].fileName || "unknown"}`)}
+                  onError={() => reportAssetFail("carousel video failed", images[carouselIndex].ref)}
                 />
               ) : (
                 <img
                   src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
                   alt={images[carouselIndex].fileName}
-                  onError={() => debugMode && console.warn(`[ASSET_FAIL] carousel image failed: ${images[carouselIndex].fileName || "unknown"}`)}
+                  onError={() => reportAssetFail("carousel image failed", images[carouselIndex].ref)}
                 />
               )}
             </div>

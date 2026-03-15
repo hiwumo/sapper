@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect } from "react";
+import { reportAssetFail } from "../assetCheck";
 
 function MessageEmbeds({ embeds, importPath, debugMode }) {
   if (!embeds || embeds.length === 0) return null;
@@ -76,7 +77,7 @@ function MessageEmbeds({ embeds, importPath, debugMode }) {
                 src={getEmbedThumbnailUrl(embed.thumbnail.url)}
                 alt={embed.title || "Embed thumbnail"}
                 loading="lazy"
-                onError={() => debugMode && console.warn(`[ASSET_FAIL] embed thumbnail failed: ${embed.thumbnail.url}`)}
+                onError={() => reportAssetFail("embed thumbnail failed", embed.thumbnail.url)}
               />
             </a>
           )}

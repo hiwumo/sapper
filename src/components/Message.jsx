@@ -56,6 +56,7 @@ import MessageAttachments from "./MessageAttachments";
 import MessageEmbeds from "./MessageEmbeds";
 import TenorEmbed from "./TenorEmbed";
 import GiphyEmbed from "./GiphyEmbed";
+import { reportAssetFail } from "../assetCheck";
 
 /**
  * Build a usable URL for an emoji image reported in message.inlineEmojis.
@@ -459,7 +460,7 @@ function processContent(message, importPath, convertFileSrc) {
           alt={emojiObj.name}
           className={emojiClass}
           draggable={false}
-          onError={() => console.warn(`[ASSET_FAIL] emoji failed to load: ${emojiObj.imageUrl || "unknown"}`)}
+          onError={() => reportAssetFail("emoji failed to load", emojiUrl)}
         />
       );
     });
@@ -629,10 +630,13 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
       if (localThumb || localVideo) {
         // Prefer thumbnail if it's a GIF; otherwise use video for Tenor-style MP4 GIFs
         const isThumbGif = localThumb && /\.gif$/i.test(localThumb);
-        const chosen = isThumbGif ? localThumb : (localVideo || localThumb);
+        // Only use video if it has a recognized video extension; otherwise fall back to thumbnail
+        const hasVideoExt = localVideo && /\.(mp4|webm|mov|avi|mkv|ogv|m4v)$/i.test(localVideo);
+        const chosen = isThumbGif ? localThumb : (hasVideoExt ? localVideo : localThumb) || localVideo;
+        if (!chosen) continue;
         const fullPath = `${importPath}\\attachments\\${chosen}`;
         resolvedDirectUrl = convertFileSrc(fullPath);
-        resolvedIsVideo = !isThumbGif && !!localVideo;
+        resolvedIsVideo = !isThumbGif && chosen === localVideo;
         hasLocalGif = true;
         break;
       }

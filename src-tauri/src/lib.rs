@@ -485,6 +485,55 @@ fn copy_avatar_to_import(
 }
 
 #[tauri::command]
+fn check_asset_path(path: String) -> Result<serde_json::Value, String> {
+    use std::path::Path;
+
+    let file_path = Path::new(&path);
+    let exists = file_path.exists();
+
+    warn!(
+        "[ASSET_FAIL] path={} exists={}",
+        logger::sanitize_string(&path),
+        exists
+    );
+
+    let mut similar: Vec<String> = Vec::new();
+    if !exists {
+        // Look for similar filenames in the same directory (different extensions, partial matches)
+        if let Some(parent) = file_path.parent() {
+            if parent.exists() {
+                if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+                    if let Ok(entries) = std::fs::read_dir(parent) {
+                        for entry in entries.filter_map(|e| e.ok()) {
+                            let name = entry.file_name();
+                            let name_str = name.to_string_lossy();
+                            // Match files that share the same stem or contain it
+                            if name_str.contains(stem) || stem.contains(&*name_str.split('.').next().unwrap_or("")) {
+                                similar.push(name_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if similar.is_empty() {
+            trace!("[ASSET_FAIL] no similar files found in parent directory");
+        } else {
+            trace!(
+                "[ASSET_FAIL] similar files: {:?}",
+                similar
+            );
+        }
+    }
+
+    Ok(serde_json::json!({
+        "exists": exists,
+        "similar": similar
+    }))
+}
+
+#[tauri::command]
 fn log_frontend_error(message: String) {
     error!("[FRONTEND] {}", logger::sanitize_string(&message));
 }
@@ -1032,6 +1081,7 @@ pub fn run() {
                 get_members,
                 update_member,
                 copy_avatar_to_import,
+                check_asset_path,
                 log_frontend_error,
                 log_frontend_warning,
                 log_frontend_info,

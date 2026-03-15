@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { reportAssetFail } from "../assetCheck";
 
 function MessageStickers({ stickers, importPath, onImageClick }) {
   if (!stickers || stickers.length === 0) return null;
@@ -19,7 +20,7 @@ function MessageStickers({ stickers, importPath, onImageClick }) {
               src={stickerUrl}
               alt={sticker.name || "Sticker"}
               loading="lazy"
-              onError={() => console.warn(`[ASSET_FAIL] sticker failed to load: ${sticker.sourceUrl || "unknown"}`)}
+              onError={() => reportAssetFail("sticker failed to load", `${importPath}\\attachments\\${sticker.sourceUrl}`)}
             />
           </div>
         );
