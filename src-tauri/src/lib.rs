@@ -397,6 +397,25 @@ fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<
 }
 
 #[tauri::command]
+fn get_pinned_message_ids(state: State<AppState>, import_id: String) -> Result<Vec<u64>, String> {
+    use std::path::PathBuf;
+
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = PathBuf::from(&import_entry.import_path);
+    let storage = message_storage::MessageStorage::new(import_dir);
+
+    storage.get_pinned_message_ids().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_import_path(state: State<AppState>, import_id: String) -> Result<String, String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
@@ -1074,6 +1093,7 @@ pub fn run() {
                 load_messages,
                 search_messages,
                 get_total_message_count,
+                get_pinned_message_ids,
                 get_import_path,
                 get_conversation_info,
                 get_log_directory,

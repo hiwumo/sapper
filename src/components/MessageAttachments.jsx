@@ -396,14 +396,14 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
             <X size={32} />
           </button>
 
-          <div className="carousel-content">
+          <div className="carousel-content" onClick={(e) => e.stopPropagation()}>
             {images.length > 1 && (
               <button className="carousel-button carousel-prev" onClick={prevImage}>
                 <ChevronLeft size={40} />
               </button>
             )}
 
-            <div className="carousel-image-container">
+            <div className="carousel-image-container" onClick={closeCarousel}>
               {images[carouselIndex].isVideoGif ? (
                 <video
                   src={images[carouselIndex].ref}
@@ -411,12 +411,14 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                   loop
                   muted
                   playsInline
+                  onClick={(e) => e.stopPropagation()}
                   onError={() => reportAssetFail("carousel video failed", images[carouselIndex].ref)}
                 />
               ) : (
                 <img
                   src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
                   alt={images[carouselIndex].fileName}
+                  onClick={(e) => e.stopPropagation()}
                   onError={() => reportAssetFail("carousel image failed", images[carouselIndex].ref)}
                 />
               )}
@@ -430,8 +432,15 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
           </div>
 
           {images.length > 1 && (
-            <div className="carousel-counter">
-              {carouselIndex + 1} / {images.length}
+            <div className="carousel-dots" onClick={(e) => e.stopPropagation()}>
+              {images.map((_, idx) => (
+                <span
+                  key={idx}
+                  className={`carousel-dot${idx === carouselIndex ? " active" : ""}`}
+                  onClick={() => setCarouselIndex(idx)}
+                />
+              ))}
+              <span className="carousel-dot-number">{carouselIndex + 1}/{images.length}</span>
             </div>
           )}
         </div>

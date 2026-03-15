@@ -11,7 +11,7 @@
 .channel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.5rem;
   height: 48px;
   padding: 0 1.5rem;
   background: var(--background);
@@ -27,6 +27,8 @@
   font-weight: 400;
   font-size: 0.75rem;
   color: var(--textPrimary);
+  flex: 1;
+  min-width: 0;
 }
 
 .channel-icon {
@@ -999,9 +1001,10 @@
   pointer-events: auto;
 }
 
-.carousel-image-container img {
-  max-width: 100%;
-  max-height: 100%;
+.carousel-image-container img,
+.carousel-image-container video {
+  max-width: 90vw;
+  max-height: 90vh;
   object-fit: contain;
   border-radius: 4px;
 }
@@ -1034,17 +1037,39 @@
   right: 20px;
 }
 
-.carousel-counter {
+.carousel-dots {
   position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   z-index: 10001;
+  pointer-events: auto;
+}
+
+.carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.carousel-dot.active {
+  background: white;
+}
+
+.carousel-dot:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.carousel-dot-number {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 4px;
   white-space: nowrap;
 }
 
@@ -2299,5 +2324,303 @@
   color: var(--textMuted);
   font-family: monospace;
   margin-top: 0.15rem;
+}
+
+/* Pin Button in Header */
+.pin-icon-button {
+  position: relative;
+  background: none;
+  border: none;
+  color: var(--textMuted);
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pin-icon-button:hover {
+  color: var(--textPrimary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pin-icon-button.active {
+  color: var(--textPrimary);
+}
+
+/* Pin Button Wrapper */
+.pin-button-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Pinned Messages Popup */
+.pinned-popup {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  width: 420px;
+  max-height: 500px;
+  background: var(--backgroundSecondary);
+  border: 1px solid var(--borderPrimary);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: popupFadeIn 0.15s ease;
+}
+
+@keyframes popupFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pinned-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--borderPrimary);
+  color: var(--textPrimary);
+  font-size: 1rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.pinned-panel-header svg {
+  color: var(--textMuted);
+  width: 18px;
+  height: 18px;
+}
+
+.pinned-panel-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--textMuted);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pinned-panel-close:hover {
+  color: var(--textPrimary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pinned-panel-content {
+  overflow-y: auto;
+  padding: 0.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.pinned-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pinned-panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pinned-panel-content::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 3px;
+}
+
+.pinned-panel-loading,
+.pinned-panel-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--textMuted);
+  font-size: 0.85rem;
+}
+
+.pinned-message-card {
+  border-bottom: 1px solid var(--borderPrimary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pinned-message-card:hover {
+  background: var(--messageHoverBackground);
+}
+
+.pinned-message-card .message {
+  margin-top: 0;
+  padding: 1rem 1rem;
+  padding-left: 4.5rem;
+}
+
+
+.pin-indicator {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  position: relative;
+}
+
+.pin-indicator-original {
+  color: #ed4245;
+}
+
+.pin-indicator-user {
+  color: var(--textMuted);
+}
+
+.pin-indicator:hover::after {
+  position: absolute;
+  left: calc(100% + 8px);
+  background: #1e1f22;
+  color: #f0f0f0;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.pin-indicator-original:hover::after {
+  content: "Original Pin";
+}
+
+.pin-indicator-user:hover::after {
+  content: "Pinned";
+}
+
+.pinned-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.pinned-page-info {
+  font-size: 0.75rem;
+  color: var(--textMuted);
+}
+
+/* Message Context Menu (right-click) */
+.message-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: #1e1f22;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  min-width: 180px;
+}
+
+.message-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: none;
+  border: none;
+  color: #dbdee1;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+
+.message-context-menu button:hover {
+  background: #5865f2;
+  color: white;
+}
+
+/* Message Info Popup */
+.message-info-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  animation: fadeIn 0.12s ease;
+}
+
+.message-info-popup {
+  background: #1e1f22;
+  border-radius: 8px;
+  width: 380px;
+  max-width: 90%;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  border: 1px solid #3a3a3a;
+}
+
+.message-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.message-info-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.message-info-close {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.message-info-close:hover {
+  background: #2a2a2a;
+  color: #f0f0f0;
+}
+
+.message-info-body {
+  padding: 0.75rem 1rem;
+}
+
+.message-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  font-size: 0.825rem;
+  color: #dbdee1;
+}
+
+.message-info-row + .message-info-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.message-info-label {
+  color: #72767d;
+  font-weight: 500;
+}
+
+.message-info-mono {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.775rem;
+  color: #b5bac1;
 }
 

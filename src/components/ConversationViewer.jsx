@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Hash, AtSign, Search, FolderOpen, Filter, X } from "lucide-react";
+import { Hash, AtSign, Search, FolderOpen, Filter, X, Pin } from "lucide-react";
 import { themes } from "../themes";
 import { useToast } from "./ToastContainer";
 import Message from "./Message";
@@ -59,6 +59,10 @@ function ConversationViewer({ importId, theme, debugMode }) {
   const [beforeTimestamp, setBeforeTimestamp] = useState(null);
   const [memberContextMenu, setMemberContextMenu] = useState(null);
   const [showHiddenMembers, setShowHiddenMembers] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState([]); // { messageId, originalPin }
+  const [showPinnedPanel, setShowPinnedPanel] = useState(false);
+  const [pinnedPage, setPinnedPage] = useState(0);
+  const PINNED_PER_PAGE = 10;
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -214,11 +218,51 @@ function ConversationViewer({ importId, theme, debugMode }) {
     });
   }, [searchResults, memberLookup]);
 
+  const [pinnedMessageData, setPinnedMessageData] = useState([]);
+  const [loadingPinnedData, setLoadingPinnedData] = useState(false);
+
+  // Load full message data for pinned messages when panel opens or pins change
+  useEffect(() => {
+    if (!showPinnedPanel || pinnedMessages.length === 0) {
+      setPinnedMessageData([]);
+      return;
+    }
+
+    const loadPinnedData = async () => {
+      setLoadingPinnedData(true);
+      try {
+        const results = await Promise.all(
+          pinnedMessages.map(pin =>
+            invoke("load_messages", { importId, startIndex: pin.messageId, count: 1 })
+              .then(msgs => msgs.length > 0 ? { msg: msgs[0], originalPin: pin.originalPin } : null)
+          )
+        );
+        const data = results.filter(Boolean).map(({ msg, originalPin }) => {
+          const storedMember = memberLookup.get(msg.author.id);
+          const enriched = storedMember ? {
+            ...msg,
+            author: { ...msg.author, nickname: storedMember.name, avatarUrl: storedMember.avatar, color: storedMember.color },
+          } : msg;
+          return { ...enriched, _originalPin: originalPin };
+        });
+        setPinnedMessageData(data);
+      } catch (err) {
+        console.error("Failed to load pinned message data:", err);
+      } finally {
+        setLoadingPinnedData(false);
+      }
+    };
+
+    loadPinnedData();
+  }, [showPinnedPanel, pinnedMessages, importId, memberLookup]);
+
   async function loadInitialData() {
     try {
       setLoading(true);
       setError(null);
       setHasScrolledToBottom(false);
+      setPinnedMessages([]);
+      setShowPinnedPanel(false);
 
       // Log frontend info
       await invoke("log_frontend_info", { message: `Loading conversation: ${importId}` });
@@ -257,6 +301,14 @@ function ConversationViewer({ importId, theme, debugMode }) {
 
       console.log(loadedMessages);
       setMessages(loadedMessages);
+
+      // Load pinned message IDs from backend (scans all chunks once)
+      try {
+        const pinnedIds = await invoke("get_pinned_message_ids", { importId });
+        setPinnedMessages(pinnedIds.map(id => ({ messageId: id, originalPin: true })));
+      } catch (pinErr) {
+        console.error("Failed to load pinned messages:", pinErr);
+      }
 
       // If we have a saved position, scroll to it after a brief delay
       if (savedPosition !== null && savedPosition !== undefined) {
@@ -530,6 +582,27 @@ function ConversationViewer({ importId, theme, debugMode }) {
     return `${date.toLocaleDateString()} ${timeStr}`;
   }
 
+  function isPinned(messageId) {
+    return pinnedMessages.some(p => p.messageId === messageId);
+  }
+
+  function isOriginalPin(messageId) {
+    return pinnedMessages.some(p => p.messageId === messageId && p.originalPin);
+  }
+
+  function togglePin(messageId) {
+    setPinnedMessages(prev => {
+      const existing = prev.find(p => p.messageId === messageId);
+      if (existing) {
+        // Don't allow unpinning original pins
+        if (existing.originalPin) return prev;
+        return prev.filter(p => p.messageId !== messageId);
+      } else {
+        return [...prev, { messageId, originalPin: false }];
+      }
+    });
+  }
+
   function handleScroll() {
     if (!messagesContainerRef.current || isLoadingMore) return;
 
@@ -716,6 +789,85 @@ function ConversationViewer({ importId, theme, debugMode }) {
             </>
           )}
         </div>
+        <div className="pin-button-wrapper">
+          <button
+            onClick={() => { setShowPinnedPanel(!showPinnedPanel); setPinnedPage(0); }}
+            className={`pin-icon-button ${showPinnedPanel ? 'active' : ''}`}
+            type="button"
+            title="Pinned Messages"
+          >
+            <Pin size={18} fill="currentColor" />
+          </button>
+          {showPinnedPanel && (
+            <div className="pinned-popup">
+              <div className="pinned-panel-header">
+                <Pin size={18} />
+                <span>Pinned Messages</span>
+                <button className="pinned-panel-close" onClick={() => setShowPinnedPanel(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="pinned-panel-content">
+                {loadingPinnedData ? (
+                  <div className="pinned-panel-loading">Loading pinned messages...</div>
+                ) : pinnedMessageData.length === 0 ? (
+                  <div className="pinned-panel-empty">No pinned messages</div>
+                ) : (
+                  <>
+                    {[...pinnedMessageData]
+                      .reverse()
+                      .slice(pinnedPage * PINNED_PER_PAGE, (pinnedPage + 1) * PINNED_PER_PAGE)
+                      .map((msg) => (
+                        <div
+                          key={msg.id}
+                          className="pinned-message-card"
+                          onClick={() => {
+                            setShowPinnedPanel(false);
+                            jumpToMessage(msg.id);
+                          }}
+                        >
+                          <Message
+                            message={msg}
+                            isGrouped={false}
+                            importPath={importPath}
+                            onImageClick={setViewingImage}
+                            formatTimestamp={formatTimestamp}
+                            convertFileSrc={convertFileSrc}
+                            onReplyClick={jumpToMessage}
+                            debugMode={false}
+                            isPinned={false}
+                            isOriginalPin={false}
+                            onTogglePin={() => {}}
+                          />
+                        </div>
+                      ))}
+                    {Math.ceil(pinnedMessageData.length / PINNED_PER_PAGE) > 1 && (
+                      <div className="pinned-pagination">
+                        <button
+                          className="pagination-btn pagination-nav-btn"
+                          onClick={() => setPinnedPage(Math.max(0, pinnedPage - 1))}
+                          disabled={pinnedPage === 0}
+                        >
+                          &lt; Back
+                        </button>
+                        <span className="pinned-page-info">
+                          {pinnedPage + 1} / {Math.ceil(pinnedMessageData.length / PINNED_PER_PAGE)}
+                        </span>
+                        <button
+                          className="pagination-btn pagination-nav-btn"
+                          onClick={() => setPinnedPage(Math.min(Math.ceil(pinnedMessageData.length / PINNED_PER_PAGE) - 1, pinnedPage + 1))}
+                          disabled={pinnedPage >= Math.ceil(pinnedMessageData.length / PINNED_PER_PAGE) - 1}
+                        >
+                          Next &gt;
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="header-search">
           <div className="search-input-container">
             <input
@@ -819,6 +971,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
         </div>
       </div>
 
+
       <div className="conversation-content">
         {/* Messages Area (80%) */}
         <div
@@ -848,6 +1001,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
                   onReplyClick={jumpToMessage}
                   debugMode={debugMode}
                   onShowRawPayload={setRawPayloadMessage}
+                  isPinned={isPinned(message.id)}
+                  isOriginalPin={isOriginalPin(message.id)}
+                  onTogglePin={togglePin}
                 />
               </div>
             );
@@ -920,6 +1076,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
                             onReplyClick={jumpToMessage}
                             debugMode={debugMode}
                             onShowRawPayload={setRawPayloadMessage}
+                            isPinned={isPinned(result.id)}
+                            isOriginalPin={isOriginalPin(result.id)}
+                            onTogglePin={togglePin}
                           />
                         </div>
                         <button

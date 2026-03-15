@@ -127,6 +127,22 @@ impl MessageStorage {
         ChunkIndex::load(&index_path)
     }
 
+    pub fn get_pinned_message_ids(&self) -> io::Result<Vec<u64>> {
+        let index = self.load_chunk_index()?;
+        let mut pinned_ids = Vec::new();
+
+        for chunk_meta in &index.chunks {
+            let messages = self.load_chunk(chunk_meta)?;
+            for msg in &messages {
+                if msg.is_pinned {
+                    pinned_ids.push(msg.id);
+                }
+            }
+        }
+
+        Ok(pinned_ids)
+    }
+
     pub fn load_messages_range(
         &self,
         start_idx: usize,

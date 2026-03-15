@@ -56,6 +56,7 @@ import MessageAttachments from "./MessageAttachments";
 import MessageEmbeds from "./MessageEmbeds";
 import TenorEmbed from "./TenorEmbed";
 import GiphyEmbed from "./GiphyEmbed";
+import { Pin } from "lucide-react";
 import { reportAssetFail } from "../assetCheck";
 
 /**
@@ -537,10 +538,11 @@ function logMessageDebug(message, debugMode) {
   }
 }
 
-function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload }) {
+function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload, isPinned, isOriginalPin, onTogglePin }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef(null);
+  const [showInfoPopup, setShowInfoPopup] = useState(false);
 
   // Log message debug info on mount/update when debug mode is on
   useEffect(() => {
@@ -548,7 +550,6 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
   }, [message.id, debugMode]);
 
   const handleContextMenu = (e) => {
-    if (!debugMode) return;
     e.preventDefault();
     setContextMenuPos({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
@@ -560,6 +561,13 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [showContextMenu]);
+
+  const handleCopyText = () => {
+    if (message.content) {
+      navigator.clipboard.writeText(message.content);
+    }
+    setShowContextMenu(false);
+  };
 
   // Check if this is a system message (like pinned messages)
   const isSystemMessage = message.type === "ChannelPinnedMessage" ||
@@ -594,13 +602,44 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         </div>
         {showContextMenu && (
           <div
-            className="debug-context-menu"
+            className="message-context-menu"
             ref={contextMenuRef}
             style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
           >
-            <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
-              View Raw Payload
+            <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
+              Info
             </button>
+            <button onClick={handleCopyText}>
+              Copy Message Text
+            </button>
+            {!isOriginalPin && (
+              <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
+                {isPinned ? "Unpin Message" : "Pin Message"}
+              </button>
+            )}
+            {debugMode && (
+              <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
+                View Raw Payload
+              </button>
+            )}
+          </div>
+        )}
+        {showInfoPopup && (
+          <div className="message-info-overlay" onClick={() => setShowInfoPopup(false)}>
+            <div className="message-info-popup" onClick={(e) => e.stopPropagation()}>
+              <div className="message-info-header">
+                <h4>Message Info</h4>
+                <button className="message-info-close" onClick={() => setShowInfoPopup(false)}>✕</button>
+              </div>
+              <div className="message-info-body">
+                <div className="message-info-row"><span className="message-info-label">Author</span><span>{message.author.nickname}</span></div>
+                <div className="message-info-row"><span className="message-info-label">ID</span><span className="message-info-mono">{message.id}</span></div>
+                {message.originalId && <div className="message-info-row"><span className="message-info-label">Original ID</span><span className="message-info-mono">{message.originalId}</span></div>}
+                <div className="message-info-row"><span className="message-info-label">Timestamp</span><span>{formatTimestamp(message.timestamp)}</span></div>
+                <div className="message-info-row"><span className="message-info-label">Type</span><span>{message.type || "Default"}</span></div>
+                {isPinned && <div className="message-info-row"><span className="message-info-label">Pinned</span><span>{isOriginalPin ? "Yes (Original)" : "Yes"}</span></div>}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -673,10 +712,27 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
                 #{message.id}
               </span>
             )}
+            {isPinned && (
+              <span className={`pin-indicator ${isOriginalPin ? 'pin-indicator-original' : 'pin-indicator-user'}`} title={isOriginalPin ? "Original Pin" : "Pinned"}>
+                <Pin size={12} />
+              </span>
+            )}
           </div>
         )}
         {message.content && message.content.length > 0 && !shouldHideContent && (
-          <div className="message-text">{processContent(message, importPath, convertFileSrc)}</div>
+          <div className="message-text">
+            {processContent(message, importPath, convertFileSrc)}
+            {isGrouped && isPinned && (
+              <span className={`pin-indicator ${isOriginalPin ? 'pin-indicator-original' : 'pin-indicator-user'}`} title={isOriginalPin ? "Original Pin" : "Pinned"}>
+                <Pin size={12} />
+              </span>
+            )}
+          </div>
+        )}
+        {isGrouped && isPinned && (!message.content || message.content.length === 0 || shouldHideContent) && (
+          <span className={`pin-indicator ${isOriginalPin ? 'pin-indicator-original' : 'pin-indicator-user'}`} title={isOriginalPin ? "Original Pin" : "Pinned"}>
+            <Pin size={12} />
+          </span>
         )}
         {onlyTenorUrl && !hasLocalGif && (
           <TenorEmbed gifId={onlyTenorUrl.gifId} url={onlyTenorUrl.url} />
@@ -707,13 +763,44 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
 
       {showContextMenu && (
         <div
-          className="debug-context-menu"
+          className="message-context-menu"
           ref={contextMenuRef}
           style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
         >
-          <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
-            View Raw Payload
+          <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
+            Info
           </button>
+          <button onClick={handleCopyText}>
+            Copy Message Text
+          </button>
+          {!isOriginalPin && (
+            <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
+              {isPinned ? "Unpin Message" : "Pin Message"}
+            </button>
+          )}
+          {debugMode && (
+            <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
+              View Raw Payload
+            </button>
+          )}
+        </div>
+      )}
+      {showInfoPopup && (
+        <div className="message-info-overlay" onClick={() => setShowInfoPopup(false)}>
+          <div className="message-info-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="message-info-header">
+              <h4>Message Info</h4>
+              <button className="message-info-close" onClick={() => setShowInfoPopup(false)}>✕</button>
+            </div>
+            <div className="message-info-body">
+              <div className="message-info-row"><span className="message-info-label">Author</span><span>{message.author.nickname}</span></div>
+              <div className="message-info-row"><span className="message-info-label">ID</span><span className="message-info-mono">{message.id}</span></div>
+              {message.originalId && <div className="message-info-row"><span className="message-info-label">Original ID</span><span className="message-info-mono">{message.originalId}</span></div>}
+              <div className="message-info-row"><span className="message-info-label">Timestamp</span><span>{formatTimestamp(message.timestamp)}</span></div>
+              <div className="message-info-row"><span className="message-info-label">Type</span><span>{message.type || "Default"}</span></div>
+              {isPinned && <div className="message-info-row"><span className="message-info-label">Pinned</span><span>{isOriginalPin ? "Yes (Original)" : "Yes"}</span></div>}
+            </div>
+          </div>
         </div>
       )}
     </div>
