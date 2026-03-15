@@ -538,7 +538,7 @@ function logMessageDebug(message, debugMode) {
   }
 }
 
-function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload, isPinned, isOriginalPin, onTogglePin }) {
+function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload, isPinned, isOriginalPin, onTogglePin, isBlurred, onToggleBlur, onToggleBlurGroup }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef(null);
@@ -595,7 +595,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     }
 
     return (
-      <div className="system-message" onContextMenu={handleContextMenu}>
+      <div className={`system-message ${isBlurred ? "message-blurred" : ""}`} onContextMenu={handleContextMenu}>
         <div className="system-message-content">
           <span className="system-message-text">{systemText}</span>
           <span className="system-message-timestamp">{formatTimestamp(message.timestamp)}</span>
@@ -611,6 +611,12 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
             </button>
             <button onClick={handleCopyText}>
               Copy Message Text
+            </button>
+            <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
+              {isBlurred ? "Unblur Message" : "Blur Message"}
+            </button>
+            <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
+              {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
             </button>
             {!isOriginalPin && (
               <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
@@ -683,7 +689,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
   }
 
   return (
-    <>
+    <div className={isBlurred ? "message-blurred" : ""}>
     <MessageReply
           referencedMessage={message.referencedMessage}
           importPath={importPath}
@@ -773,6 +779,12 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           <button onClick={handleCopyText}>
             Copy Message Text
           </button>
+          <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
+            {isBlurred ? "Unblur Message" : "Blur Message"}
+          </button>
+          <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
+            {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
+          </button>
           {!isOriginalPin && (
             <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
               {isPinned ? "Unpin Message" : "Pin Message"}
@@ -804,7 +816,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
         </div>
       )}
     </div>
-    </>
+    </div>
   );
 }
 

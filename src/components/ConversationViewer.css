@@ -2541,6 +2541,20 @@
   color: white;
 }
 
+/* Message Blur */
+.message-blurred .message-content,
+.message-blurred .system-message-content,
+.message-blurred .message-reply {
+  filter: blur(8px);
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+
+.message-blurred .message-context-menu,
+.message-blurred .message-info-overlay {
+  filter: none;
+}
+
 /* Message Info Popup */
 .message-info-overlay {
   position: fixed;

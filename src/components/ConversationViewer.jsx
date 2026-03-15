@@ -63,6 +63,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
   const [showPinnedPanel, setShowPinnedPanel] = useState(false);
   const [pinnedPage, setPinnedPage] = useState(0);
   const PINNED_PER_PAGE = 10;
+  const [blurredMessages, setBlurredMessages] = useState(new Set()); // set of message IDs
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -603,6 +604,49 @@ function ConversationViewer({ importId, theme, debugMode }) {
     });
   }
 
+  function toggleBlur(messageId) {
+    setBlurredMessages(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  }
+
+  function toggleBlurGroup(messageId) {
+    // Find the message and all contiguous messages by the same author
+    const msgIndex = messagesWithStoredMembers.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return;
+    const author = messagesWithStoredMembers[msgIndex].author.nickname;
+    const groupIds = [messageId];
+
+    // Walk backwards
+    for (let i = msgIndex - 1; i >= 0; i--) {
+      if (messagesWithStoredMembers[i].author.nickname === author) {
+        groupIds.push(messagesWithStoredMembers[i].id);
+      } else break;
+    }
+    // Walk forwards
+    for (let i = msgIndex + 1; i < messagesWithStoredMembers.length; i++) {
+      if (messagesWithStoredMembers[i].author.nickname === author) {
+        groupIds.push(messagesWithStoredMembers[i].id);
+      } else break;
+    }
+
+    setBlurredMessages(prev => {
+      const next = new Set(prev);
+      // If the clicked message is blurred, unblur the whole group; otherwise blur all
+      const shouldBlur = !prev.has(messageId);
+      for (const id of groupIds) {
+        if (shouldBlur) next.add(id); else next.delete(id);
+      }
+      return next;
+    });
+  }
+
   function handleScroll() {
     if (!messagesContainerRef.current || isLoadingMore) return;
 
@@ -838,6 +882,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
                             isPinned={false}
                             isOriginalPin={false}
                             onTogglePin={() => {}}
+                            isBlurred={blurredMessages.has(msg.id)}
+                            onToggleBlur={toggleBlur}
+                            onToggleBlurGroup={toggleBlurGroup}
                           />
                         </div>
                       ))}
@@ -1004,6 +1051,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
                   isPinned={isPinned(message.id)}
                   isOriginalPin={isOriginalPin(message.id)}
                   onTogglePin={togglePin}
+                  isBlurred={blurredMessages.has(message.id)}
+                  onToggleBlur={toggleBlur}
+                  onToggleBlurGroup={toggleBlurGroup}
                 />
               </div>
             );
@@ -1079,6 +1129,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
                             isPinned={isPinned(result.id)}
                             isOriginalPin={isOriginalPin(result.id)}
                             onTogglePin={togglePin}
+                            isBlurred={blurredMessages.has(result.id)}
+                            onToggleBlur={toggleBlur}
+                            onToggleBlurGroup={toggleBlurGroup}
                           />
                         </div>
                         <button
