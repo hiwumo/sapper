@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSExudUFyTkVKSW10SEFOQVk0bU5HTFZZMGxxWVJtWGpBcG42SXQwWEY5MjNDTElRWVRwNVloWVNmN3E4dTYyYWZETlpTbkREMWhOV2pWQm5wSnRSYVI1akRuNUErVVFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTMyNTE5CWZpbGU6c2FwcGVyXzAuNC4wX3g2NC1zZXR1cC5leGUKNFY3MUFMWWlHOE9PbWpmRERPallJREVLV0FPZEgxcFVNb2I3U1RKSkY3VmxxaDVISmxDQ2RzQm00b1FjbzhEQVFhVlp2dnRZZXUyTm5yMU5aY1FEQ1E9PQo=",
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRSExudUFyTkVKSW53NWhKbUpxcFRGbktGQkgzNTE4d1krUlZWMGJMWlRDVTBGRG5IT1JuN2JBaUtyU3NSRFVIUlg5OTVnL2xTcWpwRUlaamhJcjV5OEtnRXJSTXdNMndNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNTMzNTEyCWZpbGU6c2FwcGVyXzAuNC4wX3g2NC1zZXR1cC5leGUKb1JDZnlHcEt3Z1NaYTBadjd6aFNWUTNrQTY1T2JXWGJtZCt6STN1cFcydktoYXgyMW9zTVg1OXFHRkpkOU1qaVhJSWRNVVBpUUMzN3N6TER1bURoQ3c9PQo=",
                                              "url":  "https://github.com/hiwumo/sapper/releases/download/v0.4.0/sapper_0.4.0_x64-setup.exe"
                                          }
                   },
-    "pub_date":  "2026-03-14T23:55:21Z",
+    "pub_date":  "2026-03-15T00:11:53Z",
     "version":  "0.4.0",
     "notes":  "Bug fixes and improvements"
 }
