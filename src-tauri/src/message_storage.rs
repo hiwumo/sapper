@@ -28,6 +28,8 @@ pub struct StoredMessage {
     pub media_refs: Vec<String>, // paths to media files (computed field)
     pub reference: Option<MessageReference>,
     pub referenced_message: Option<Box<StoredMessage>>, // The actual message being replied to
+    #[serde(default)]
+    pub is_user_message: bool, // true if sent by the user via mutable conversation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,5 +183,148 @@ impl MessageStorage {
         }
 
         Ok(messages)
+    }
+
+    /// Append a new user message to the end of the conversation.
+    /// Returns the assigned message ID.
+    pub fn append_message(&self, message: StoredMessage) -> io::Result<StoredMessage> {
+        let mut index = self.load_chunk_index()?;
+        let msg_id = index.total_messages as u64;
+
+        let mut message = message;
+        message.id = msg_id;
+
+        // Check if the last chunk has room
+        if let Some(last_chunk) = index.chunks.last_mut() {
+            if last_chunk.message_count < CHUNK_SIZE {
+                // Append to existing chunk
+                let mut chunk_messages = self.load_chunk(last_chunk)?;
+                chunk_messages.push(message.clone());
+                last_chunk.end_id = msg_id;
+                last_chunk.message_count = chunk_messages.len();
+
+                let json = serde_json::to_string(&chunk_messages)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                fs::write(&last_chunk.file_path, json)?;
+
+                index.total_messages += 1;
+                let index_path = self.import_dir.join("chunk_index.json");
+                index.save(&index_path)?;
+
+                return Ok(message);
+            }
+        }
+
+        // Need a new chunk
+        let chunks_dir = self.import_dir.join("chunks");
+        fs::create_dir_all(&chunks_dir)?;
+
+        let chunk_id = index.chunks.len();
+        let file_name = format!("chunk_{}.json", chunk_id);
+        let file_path = chunks_dir.join(&file_name);
+
+        let chunk_messages = vec![message.clone()];
+        let json = serde_json::to_string(&chunk_messages)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        fs::write(&file_path, &json)?;
+
+        index.chunks.push(ChunkMeta {
+            chunk_id,
+            start_id: msg_id,
+            end_id: msg_id,
+            message_count: 1,
+            file_path: file_path.to_string_lossy().to_string(),
+        });
+        index.total_messages += 1;
+
+        let index_path = self.import_dir.join("chunk_index.json");
+        index.save(&index_path)?;
+
+        Ok(message)
+    }
+
+    /// Edit a message's content by its ID.
+    pub fn edit_message(&self, message_id: u64, new_content: String) -> io::Result<StoredMessage> {
+        let index = self.load_chunk_index()?;
+
+        for chunk_meta in &index.chunks {
+            if message_id >= chunk_meta.start_id && message_id <= chunk_meta.end_id {
+                let mut chunk_messages = self.load_chunk(chunk_meta)?;
+                if let Some(msg) = chunk_messages.iter_mut().find(|m| m.id == message_id) {
+                    if !msg.is_user_message {
+                        return Err(io::Error::new(
+                            io::ErrorKind::PermissionDenied,
+                            "Cannot edit non-user messages",
+                        ));
+                    }
+                    msg.content = new_content;
+                    msg.timestamp_edited = Some(chrono::Utc::now().to_rfc3339());
+
+                    let result = msg.clone();
+
+                    let json = serde_json::to_string(&chunk_messages)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    fs::write(&chunk_meta.file_path, json)?;
+
+                    return Ok(result);
+                }
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Message {} not found", message_id),
+        ))
+    }
+
+    /// Delete a user message by its ID. Marks it as deleted by removing content
+    /// and setting a deleted flag, keeping IDs stable.
+    pub fn delete_message(&self, message_id: u64) -> io::Result<()> {
+        let mut index = self.load_chunk_index()?;
+
+        for chunk_meta in index.chunks.iter_mut() {
+            if message_id >= chunk_meta.start_id && message_id <= chunk_meta.end_id {
+                let mut chunk_messages = self.load_chunk(chunk_meta)?;
+                let pos = chunk_messages.iter().position(|m| m.id == message_id);
+
+                if let Some(pos) = pos {
+                    if !chunk_messages[pos].is_user_message {
+                        return Err(io::Error::new(
+                            io::ErrorKind::PermissionDenied,
+                            "Cannot delete non-user messages",
+                        ));
+                    }
+
+                    chunk_messages.remove(pos);
+                    chunk_meta.message_count = chunk_messages.len();
+
+                    if chunk_messages.is_empty() {
+                        // Remove the chunk file and update index
+                        let _ = fs::remove_file(&chunk_meta.file_path);
+                    } else {
+                        chunk_meta.start_id = chunk_messages.first().map(|m| m.id).unwrap_or(0);
+                        chunk_meta.end_id = chunk_messages.last().map(|m| m.id).unwrap_or(0);
+
+                        let json = serde_json::to_string(&chunk_messages)
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                        fs::write(&chunk_meta.file_path, json)?;
+                    }
+
+                    // Update index
+                    index.total_messages = index.total_messages.saturating_sub(1);
+                    index.chunks.retain(|c| c.message_count > 0);
+
+                    let index_path = self.import_dir.join("chunk_index.json");
+                    index.save(&index_path)?;
+
+                    return Ok(());
+                }
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Message {} not found", message_id),
+        ))
     }
 }

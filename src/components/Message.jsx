@@ -56,7 +56,7 @@ import MessageAttachments from "./MessageAttachments";
 import MessageEmbeds from "./MessageEmbeds";
 import TenorEmbed from "./TenorEmbed";
 import GiphyEmbed from "./GiphyEmbed";
-import { Pin } from "lucide-react";
+import { Pin, Copy, Info, Pencil, Trash2, Eye, EyeOff, Users, Code, Pin as PinIcon } from "lucide-react";
 import { reportAssetFail } from "../assetCheck";
 
 /**
@@ -538,7 +538,7 @@ function logMessageDebug(message, debugMode) {
   }
 }
 
-function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload, isPinned, isOriginalPin, onTogglePin, isBlurred, onToggleBlur, onToggleBlurGroup }) {
+function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload, isPinned, isOriginalPin, onTogglePin, isBlurred, onToggleBlur, onToggleBlurGroup, isMutable, onEditMessage, onDeleteMessage }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef(null);
@@ -555,11 +555,38 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
     setShowContextMenu(true);
   };
 
+  // Adjust context menu position to stay within viewport
+  useEffect(() => {
+    if (!showContextMenu || !contextMenuRef.current) return;
+    const menu = contextMenuRef.current;
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let { x, y } = contextMenuPos;
+
+    if (rect.right > vw) x = vw - rect.width - 4;
+    if (rect.bottom > vh) y = vh - rect.height - 4;
+    if (x < 0) x = 4;
+    if (y < 0) y = 4;
+
+    if (x !== contextMenuPos.x || y !== contextMenuPos.y) {
+      setContextMenuPos({ x, y });
+    }
+  }, [showContextMenu]);
+
   useEffect(() => {
     if (!showContextMenu) return;
-    const handleClick = () => setShowContextMenu(false);
-    window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
+    const handleDismiss = (e) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setShowContextMenu(false);
+      }
+    };
+    window.addEventListener("click", handleDismiss);
+    window.addEventListener("mousedown", handleDismiss);
+    return () => {
+      window.removeEventListener("click", handleDismiss);
+      window.removeEventListener("mousedown", handleDismiss);
+    };
   }, [showContextMenu]);
 
   const handleCopyText = () => {
@@ -606,26 +633,28 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
             ref={contextMenuRef}
             style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
           >
-            <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
-              Info
-            </button>
             <button onClick={handleCopyText}>
-              Copy Message Text
-            </button>
-            <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
-              {isBlurred ? "Unblur Message" : "Blur Message"}
-            </button>
-            <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
-              {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
+              <Copy size={16} /> Copy Message Text
             </button>
             {!isOriginalPin && (
               <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
-                {isPinned ? "Unpin Message" : "Pin Message"}
+                <PinIcon size={16} /> {isPinned ? "Unpin Message" : "Pin Message"}
               </button>
             )}
+            <div className="context-menu-separator" />
+            <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
+              {isBlurred ? <Eye size={16} /> : <EyeOff size={16} />} {isBlurred ? "Unblur Message" : "Blur Message"}
+            </button>
+            <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
+              <Users size={16} /> {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
+            </button>
+            <div className="context-menu-separator" />
+            <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
+              <Info size={16} /> Info
+            </button>
             {debugMode && (
               <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
-                View Raw Payload
+                <Code size={16} /> View Raw Payload
               </button>
             )}
           </div>
@@ -773,27 +802,42 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           ref={contextMenuRef}
           style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
         >
-          <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
-            Info
-          </button>
           <button onClick={handleCopyText}>
-            Copy Message Text
+            <Copy size={16} /> Copy Message Text
           </button>
-          <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
-            {isBlurred ? "Unblur Message" : "Blur Message"}
-          </button>
-          <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
-            {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
-          </button>
-          {!isOriginalPin && (
-            <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
-              {isPinned ? "Unpin Message" : "Pin Message"}
+          {isMutable && message.isUserMessage && (
+            <button onClick={() => { onEditMessage?.(message.id, message.content); setShowContextMenu(false); }}>
+              <Pencil size={16} /> Edit
             </button>
           )}
+          {!isOriginalPin && (
+            <button onClick={() => { onTogglePin?.(message.id); setShowContextMenu(false); }}>
+              <PinIcon size={16} /> {isPinned ? "Unpin Message" : "Pin Message"}
+            </button>
+          )}
+          <div className="context-menu-separator" />
+          <button onClick={() => { onToggleBlur?.(message.id); setShowContextMenu(false); }}>
+            {isBlurred ? <Eye size={16} /> : <EyeOff size={16} />} {isBlurred ? "Unblur Message" : "Blur Message"}
+          </button>
+          <button onClick={() => { onToggleBlurGroup?.(message.id); setShowContextMenu(false); }}>
+            <Users size={16} /> {isBlurred ? "Unblur Message Group" : "Blur Message Group"}
+          </button>
+          <div className="context-menu-separator" />
+          <button onClick={() => { setShowInfoPopup(true); setShowContextMenu(false); }}>
+            <Info size={16} /> Info
+          </button>
           {debugMode && (
             <button onClick={() => { onShowRawPayload?.(message); setShowContextMenu(false); }}>
-              View Raw Payload
+              <Code size={16} /> View Raw Payload
             </button>
+          )}
+          {isMutable && message.isUserMessage && (
+            <>
+              <div className="context-menu-separator" />
+              <button className="context-menu-danger" onClick={() => { onDeleteMessage?.(message.id); setShowContextMenu(false); }}>
+                <Trash2 size={16} /> Delete
+              </button>
+            </>
           )}
         </div>
       )}

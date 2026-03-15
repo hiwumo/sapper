@@ -1031,6 +1031,233 @@ fn batch_reimport_conversations(
 }
 
 #[tauri::command]
+fn get_mutable_setting(state: State<AppState>, import_id: String) -> Result<bool, String> {
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let import_data = core.load_import_data(&import_id).map_err(|e| e.to_string())?;
+    Ok(import_data.mutable_conversation)
+}
+
+#[tauri::command]
+fn set_mutable_setting(
+    state: State<AppState>,
+    import_id: String,
+    enabled: bool,
+    member_id: Option<String>,
+) -> Result<(), String> {
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let mut import_data = core.load_import_data(&import_id).map_err(|e| e.to_string())?;
+    import_data.mutable_conversation = enabled;
+    import_data.mutable_member_id = if enabled { member_id } else { None };
+    import_data.last_updated = chrono::Utc::now().to_rfc3339();
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = std::path::PathBuf::from(&import_entry.import_path);
+    let import_data_path = import_dir.join("import_data.json");
+    let temp_path = import_dir.join("import_data.json.tmp");
+
+    let contents = serde_json::to_string_pretty(&import_data).map_err(|e| e.to_string())?;
+    std::fs::write(&temp_path, contents).map_err(|e| e.to_string())?;
+    std::fs::rename(temp_path, import_data_path).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_mutable_member(state: State<AppState>, import_id: String) -> Result<Option<serde_json::Value>, String> {
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let import_data = core.load_import_data(&import_id).map_err(|e| e.to_string())?;
+
+    if !import_data.mutable_conversation {
+        return Ok(None);
+    }
+
+    if let Some(member_id) = &import_data.mutable_member_id {
+        if let Some(member) = import_data.members.iter().find(|m| m.id == *member_id) {
+            return serde_json::to_value(member).map(Some).map_err(|e| e.to_string());
+        }
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
+fn send_user_message(
+    state: State<AppState>,
+    import_id: String,
+    content: String,
+) -> Result<StoredMessage, String> {
+    info!("Sending user message in conversation: {}", logger::sanitize_string(&import_id));
+
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    // Get the mutable member info
+    let import_data = core.load_import_data(&import_id).map_err(|e| e.to_string())?;
+    if !import_data.mutable_conversation {
+        return Err("Conversation is not mutable".to_string());
+    }
+    let member_id = import_data.mutable_member_id
+        .as_ref()
+        .ok_or("No member selected for mutable conversation")?;
+    let member = import_data.members.iter()
+        .find(|m| m.id == *member_id)
+        .ok_or("Selected member not found")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = PathBuf::from(&import_entry.import_path);
+    let storage = message_storage::MessageStorage::new(import_dir.clone());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let message = StoredMessage {
+        id: 0, // Will be assigned by append_message
+        original_id: format!("user_{}", now),
+        message_type: "Default".to_string(),
+        timestamp: now,
+        timestamp_edited: None,
+        call_ended_timestamp: None,
+        is_pinned: false,
+        content: content.clone(),
+        author: models::Author {
+            id: member.id.clone(),
+            name: member.name.clone(),
+            discriminator: member.discriminator.clone(),
+            nickname: member.nickname.clone(),
+            color: member.color.clone(),
+            is_bot: member.is_bot,
+            roles: member.roles.clone(),
+            avatar_url: member.avatar_url.clone(),
+        },
+        attachments: vec![],
+        embeds: vec![],
+        stickers: vec![],
+        reactions: vec![],
+        mentions: vec![],
+        inline_emojis: vec![],
+        media_refs: vec![],
+        reference: None,
+        referenced_message: None,
+        is_user_message: true,
+    };
+
+    let stored = storage.append_message(message).map_err(|e| e.to_string())?;
+
+    // Update search index
+    let index_dir = import_dir.join("search_index");
+    if index_dir.exists() {
+        match search::MessageSearchIndex::open(&index_dir) {
+            Ok(search_index) => {
+                if let Err(e) = search_index.add_message(&stored) {
+                    warn!("Failed to update search index: {}", e);
+                }
+            }
+            Err(e) => warn!("Failed to open search index: {}", e),
+        }
+    }
+
+    info!("User message sent with ID: {}", stored.id);
+    Ok(stored)
+}
+
+#[tauri::command]
+fn edit_user_message(
+    state: State<AppState>,
+    import_id: String,
+    message_id: u64,
+    new_content: String,
+) -> Result<StoredMessage, String> {
+    info!("Editing user message {} in conversation: {}", message_id, logger::sanitize_string(&import_id));
+
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = PathBuf::from(&import_entry.import_path);
+    let storage = message_storage::MessageStorage::new(import_dir.clone());
+
+    let updated = storage.edit_message(message_id, new_content).map_err(|e| e.to_string())?;
+
+    // Update search index
+    let index_dir = import_dir.join("search_index");
+    if index_dir.exists() {
+        match search::MessageSearchIndex::open(&index_dir) {
+            Ok(search_index) => {
+                if let Err(e) = search_index.update_message(&updated) {
+                    warn!("Failed to update search index: {}", e);
+                }
+            }
+            Err(e) => warn!("Failed to open search index: {}", e),
+        }
+    }
+
+    info!("User message {} edited successfully", message_id);
+    Ok(updated)
+}
+
+#[tauri::command]
+fn delete_user_message(
+    state: State<AppState>,
+    import_id: String,
+    message_id: u64,
+) -> Result<(), String> {
+    info!("Deleting user message {} in conversation: {}", message_id, logger::sanitize_string(&import_id));
+
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+
+    let metadata = core.load_metadata().map_err(|e| e.to_string())?;
+    let import_entry = metadata.imports
+        .iter()
+        .find(|e| e.id == import_id)
+        .ok_or("Import not found")?;
+
+    let import_dir = PathBuf::from(&import_entry.import_path);
+    let storage = message_storage::MessageStorage::new(import_dir.clone());
+
+    storage.delete_message(message_id).map_err(|e| e.to_string())?;
+
+    // Update search index
+    let index_dir = import_dir.join("search_index");
+    if index_dir.exists() {
+        match search::MessageSearchIndex::open(&index_dir) {
+            Ok(search_index) => {
+                if let Err(e) = search_index.delete_message(message_id) {
+                    warn!("Failed to update search index: {}", e);
+                }
+            }
+            Err(e) => warn!("Failed to open search index: {}", e),
+        }
+    }
+
+    info!("User message {} deleted successfully", message_id);
+    Ok(())
+}
+
+#[tauri::command]
 fn cancel_import(state: State<AppState>) -> Result<(), String> {
     info!("Cancelling import");
     state.import_cancelled.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -1122,7 +1349,13 @@ pub fn run() {
                 get_import_preview,
                 get_disk_usage,
                 clear_logs,
-                reorder_imports
+                reorder_imports,
+                get_mutable_setting,
+                set_mutable_setting,
+                get_mutable_member,
+                send_user_message,
+                edit_user_message,
+                delete_user_message
             ]
         )
         .run(tauri::generate_context!())

@@ -278,6 +278,7 @@ impl SapperCore {
                 media_refs,
                 reference: msg.reference.clone(),
                 referenced_message: None, // Will be populated in second pass
+                is_user_message: false,
             });
         }
 
@@ -469,6 +470,8 @@ impl SapperCore {
             members: members.members.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
             last_updated: chrono::Utc::now().to_rfc3339(),
+            mutable_conversation: false,
+            mutable_member_id: None,
         };
 
         // Save as import_data.json
@@ -561,6 +564,8 @@ impl SapperCore {
                 members: members.members,
                 created_at: import_entry.created_at.clone(),
                 last_updated: chrono::Utc::now().to_rfc3339(),
+                mutable_conversation: false,
+                mutable_member_id: None,
             });
         }
 
@@ -1172,6 +1177,13 @@ impl SapperCore {
                 .map(|d| d.created_at.clone())
                 .unwrap_or_else(|| import_entry.created_at.clone()),
             last_updated: chrono::Utc::now().to_rfc3339(),
+            mutable_conversation: existing_import_data
+                .as_ref()
+                .map(|d| d.mutable_conversation)
+                .unwrap_or(false),
+            mutable_member_id: existing_import_data
+                .as_ref()
+                .and_then(|d| d.mutable_member_id.clone()),
         };
 
         // Preserve user customizations (nicknames, avatars) if they exist

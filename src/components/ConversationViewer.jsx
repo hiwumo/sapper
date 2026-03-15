@@ -7,6 +7,7 @@ import { themes } from "../themes";
 import { useToast } from "./ToastContainer";
 import Message from "./Message";
 import MessageAvatar from "./MessageAvatar";
+import MessageBar from "./MessageBar";
 import MemberEditor from "./MemberEditor";
 import "./ConversationViewer.css";
 
@@ -29,7 +30,7 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-function ConversationViewer({ importId, theme, debugMode }) {
+function ConversationViewer({ importId, theme, debugMode, refreshKey }) {
   const toast = useToast();
   const themeColors = themes[theme]?.colors || themes.dark.colors;
   const [messages, _setMessages] = useState([]);
@@ -64,6 +65,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
   const [pinnedPage, setPinnedPage] = useState(0);
   const PINNED_PER_PAGE = 10;
   const [blurredMessages, setBlurredMessages] = useState(new Set()); // set of message IDs
+  const [isMutable, setIsMutable] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(null); // { id, content }
+  const [editContent, setEditContent] = useState("");
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -78,6 +82,15 @@ function ConversationViewer({ importId, theme, debugMode }) {
   useEffect(() => {
     loadInitialData();
   }, [importId]);
+
+  // Re-fetch mutable setting when conversation is edited
+  useEffect(() => {
+    if (refreshKey > 0) {
+      invoke("get_mutable_setting", { importId })
+        .then(val => setIsMutable(val))
+        .catch(() => {});
+    }
+  }, [refreshKey]);
 
   useEffect(() => {
     if (!hasScrolledToBottom && messages.length > 0 && messagesEndRef.current) {
@@ -309,6 +322,15 @@ function ConversationViewer({ importId, theme, debugMode }) {
         setPinnedMessages(pinnedIds.map(id => ({ messageId: id, originalPin: true })));
       } catch (pinErr) {
         console.error("Failed to load pinned messages:", pinErr);
+      }
+
+      // Load mutable conversation setting
+      try {
+        const mutable = await invoke("get_mutable_setting", { importId });
+        setIsMutable(mutable);
+      } catch (mutErr) {
+        console.error("Failed to load mutable setting:", mutErr);
+        setIsMutable(false);
       }
 
       // If we have a saved position, scroll to it after a brief delay
@@ -645,6 +667,88 @@ function ConversationViewer({ importId, theme, debugMode }) {
       }
       return next;
     });
+  }
+
+  async function handleSendMessage(content) {
+    if (!content) return;
+
+    try {
+      const stored = await invoke("send_user_message", {
+        importId,
+        content,
+      });
+
+      setTotalMessages(prev => prev + 1);
+
+      // Add the new message to the current view if we're at the bottom
+      const latestLoaded = messages.length > 0 && messages[messages.length - 1].id >= totalMessages - 1;
+      if (latestLoaded) {
+        setMessages(prev => [...prev, stored]);
+        // Scroll to bottom after send
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
+      } else {
+        // Jump to present to see the new message
+        jumpToPresent();
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      toast.error(`Failed to send message: ${err}`);
+    }
+  }
+
+  async function handleEditMessage(messageId, newContent) {
+    const content = newContent.trim();
+    if (!content) return;
+
+    try {
+      const updated = await invoke("edit_user_message", {
+        importId,
+        messageId,
+        newContent: content,
+      });
+
+      // Update message in the current view
+      setMessages(prev => prev.map(m => m.id === messageId ? updated : m));
+      setEditingMessage(null);
+      setEditContent("");
+    } catch (err) {
+      console.error("Failed to edit message:", err);
+      toast.error(`Failed to edit message: ${err}`);
+    }
+  }
+
+  async function handleDeleteMessage(messageId) {
+    try {
+      await invoke("delete_user_message", { importId, messageId });
+
+      // Remove from current view
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      setTotalMessages(prev => prev - 1);
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+      toast.error(`Failed to delete message: ${err}`);
+    }
+  }
+
+  function startEditMessage(messageId, content) {
+    setEditingMessage(messageId);
+    setEditContent(content);
+  }
+
+  function cancelEdit() {
+    setEditingMessage(null);
+    setEditContent("");
+  }
+
+  function handleEditKeyDown(e, messageId) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleEditMessage(messageId, editContent);
+    } else if (e.key === "Escape") {
+      cancelEdit();
+    }
   }
 
   function handleScroll() {
@@ -1020,6 +1124,8 @@ function ConversationViewer({ importId, theme, debugMode }) {
 
 
       <div className="conversation-content">
+        {/* Messages Column (messages + optional message bar) */}
+        <div className="messages-column">
         {/* Messages Area (80%) */}
         <div
           className="messages-area"
@@ -1032,12 +1138,28 @@ function ConversationViewer({ importId, theme, debugMode }) {
             // Break grouping if message has a reply
             const isGrouped = prevMessage &&
               prevMessage.author.nickname === message.author.nickname &&
-              timeDiff > 0 &&
+              timeDiff >= 0 &&
               timeDiff <= 300 && // Within 5 minutes and chronological
               !message.referencedMessage; // Break grouping if this message is a reply
 
             return (
               <div key={message.id} data-message-id={message.id}>
+                {editingMessage === message.id ? (
+                  <div className="message-edit-container">
+                    <textarea
+                      className="message-edit-input"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      onKeyDown={(e) => handleEditKeyDown(e, message.id)}
+                      autoFocus
+                    />
+                    <div className="message-edit-actions">
+                      <span className="message-edit-hint">Escape to cancel, Enter to save</span>
+                      <button className="message-edit-cancel" onClick={cancelEdit}>Cancel</button>
+                      <button className="message-edit-save" onClick={() => handleEditMessage(message.id, editContent)}>Save</button>
+                    </div>
+                  </div>
+                ) : (
                 <Message
                   message={message}
                   isGrouped={isGrouped}
@@ -1054,7 +1176,11 @@ function ConversationViewer({ importId, theme, debugMode }) {
                   isBlurred={blurredMessages.has(message.id)}
                   onToggleBlur={toggleBlur}
                   onToggleBlurGroup={toggleBlurGroup}
+                  isMutable={isMutable}
+                  onEditMessage={startEditMessage}
+                  onDeleteMessage={handleDeleteMessage}
                 />
+                )}
               </div>
             );
           })}
@@ -1070,6 +1196,10 @@ function ConversationViewer({ importId, theme, debugMode }) {
             </button>
           </div>
         )}
+
+        {/* Mutable Conversation Message Bar */}
+        {isMutable && <MessageBar onSend={handleSendMessage} channelName={conversationInfo?.channelName} />}
+        </div>{/* end messages-column */}
 
         {/* Member List / Search Results (20%) */}
         <div className="member-list">

@@ -54,6 +54,8 @@ function AppContent() {
   const [debugMode, setDebugMode] = useState(false);
   const [conversationOrder, setConversationOrder] = useState([]);
 
+  const [conversationRefresh, setConversationRefresh] = useState(0);
+
   // Edit/Info dialogs
   const [editingImport, setEditingImport] = useState(null);
   const [infoImport, setInfoImport] = useState(null);
@@ -516,6 +518,7 @@ function AppContent() {
       });
       await loadImports();
       setEditingImport(null);
+      setConversationRefresh(prev => prev + 1);
     } catch (error) {
       console.error("Update failed:", error);
       toast.error(`Update failed: ${error}`);
@@ -813,6 +816,7 @@ function AppContent() {
               theme={theme}
               key={activeView}
               debugMode={debugMode}
+              refreshKey={conversationRefresh}
             />
           ) : (
             <div className="empty-state">

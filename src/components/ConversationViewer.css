@@ -349,6 +349,14 @@
   position: relative;
 }
 
+.messages-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .messages-area {
   flex: 1;
   overflow-y: auto;
@@ -1957,7 +1965,7 @@
 /* Jump to Present Bar */
 .jump-to-present-bar {
   position: absolute;
-  bottom: 1.5rem;
+  bottom: 5rem;
   left: calc((100% - 400px) / 2);
   transform: translateX(-50%);
   display: flex;
@@ -2523,7 +2531,9 @@
 }
 
 .message-context-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   padding: 0.6rem 1rem;
   background: none;
@@ -2537,8 +2547,14 @@
 }
 
 .message-context-menu button:hover {
-  background: #5865f2;
+  background: rgba(88, 101, 242, 0.3);
   color: white;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: #3a3a3a;
+  margin: 4px 0;
 }
 
 /* Message Blur */
@@ -2636,5 +2652,138 @@
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 0.775rem;
   color: #b5bac1;
+}
+
+/* Message Bar (Mutable Conversation) */
+.message-bar {
+  padding: 0.75rem 1rem 1.25rem;
+  flex-shrink: 0;
+  background: var(--background);
+}
+
+.message-bar-container {
+  display: flex;
+  align-items: flex-end;
+  background: var(--backgroundTertiary, var(--backgroundSecondary));
+  border-radius: 8px;
+  padding: 0 4px 0 1rem;
+}
+
+.message-bar-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--textPrimary);
+  padding: 0.7rem 0;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: none;
+  min-height: 22px;
+  max-height: 120px;
+  outline: none;
+  field-sizing: content;
+  line-height: 1.4;
+}
+
+.message-bar-input::placeholder {
+  color: var(--textMuted);
+}
+
+.message-bar-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  flex-shrink: 0;
+}
+
+.message-bar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--textMuted);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.message-bar-icon-btn:hover {
+  color: var(--textSecondary, var(--textPrimary));
+}
+
+/* Message Edit (inline) */
+.message-edit-container {
+  padding: 0.5rem 1rem 0.5rem 4.5rem;
+}
+
+.message-edit-input {
+  width: 100%;
+  background: var(--background);
+  border: 1px solid rgba(88, 101, 242, 0.5);
+  border-radius: 6px;
+  color: var(--textPrimary);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: none;
+  min-height: 40px;
+  max-height: 200px;
+  outline: none;
+  field-sizing: content;
+}
+
+.message-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.message-edit-hint {
+  font-size: 0.75rem;
+  color: var(--textMuted);
+  flex: 1;
+}
+
+.message-edit-cancel,
+.message-edit-save {
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  border: none;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.message-edit-cancel {
+  background: transparent;
+  color: var(--textMuted);
+}
+
+.message-edit-cancel:hover {
+  color: var(--textPrimary);
+}
+
+.message-edit-save {
+  background: #5865f2;
+  color: white;
+}
+
+.message-edit-save:hover {
+  background: #4752c4;
+}
+
+/* Context menu danger item */
+.message-context-menu .context-menu-danger {
+  color: #ed4245;
+}
+
+.message-context-menu .context-menu-danger:hover {
+  background: rgba(237, 66, 69, 0.1);
+  color: #ed4245;
 }
 

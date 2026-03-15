@@ -161,6 +161,10 @@ pub struct ImportData {
     pub members: Vec<Member>,
     pub created_at: String,
     pub last_updated: String,
+    #[serde(default)]
+    pub mutable_conversation: bool,
+    #[serde(default)]
+    pub mutable_member_id: Option<String>, // Which member "is you" for mutable conversations
 }
 
 impl Default for ImportData {
@@ -170,6 +174,8 @@ impl Default for ImportData {
             members: Vec::new(),
             created_at: chrono::Utc::now().to_rfc3339(),
             last_updated: chrono::Utc::now().to_rfc3339(),
+            mutable_conversation: false,
+            mutable_member_id: None,
         }
     }
 }

@@ -501,6 +501,63 @@ impl MessageSearchIndex {
         Ok((message_ids, total_count))
     }
 
+    /// Add a single message to the search index.
+    pub fn add_message(&self, msg: &StoredMessage) -> io::Result<()> {
+        let id_field = self.schema.get_field("id").unwrap();
+        let timestamp_field = self.schema.get_field("timestamp").unwrap();
+        let sender_field = self.schema.get_field("sender").unwrap();
+        let content_raw_field = self.schema.get_field("content_raw").unwrap();
+        let content_stemmed_field = self.schema.get_field("content_stemmed").unwrap();
+        let content_prefix_field = self.schema.get_field("content_prefix").unwrap();
+
+        let mut writer: IndexWriter = self
+            .index
+            .writer(50_000_000)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        writer
+            .add_document(doc!(
+                id_field => msg.id,
+                timestamp_field => msg.timestamp,
+                sender_field => msg.author.nickname.clone(),
+                content_raw_field => msg.content.clone(),
+                content_stemmed_field => msg.content.clone(),
+                content_prefix_field => msg.content.clone(),
+            ))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        writer
+            .commit()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        Ok(())
+    }
+
+    /// Delete a message from the search index by its ID.
+    pub fn delete_message(&self, message_id: u64) -> io::Result<()> {
+        let id_field = self.schema.get_field("id").unwrap();
+
+        let mut writer: IndexWriter = self
+            .index
+            .writer(50_000_000)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        writer.delete_term(Term::from_field_u64(id_field, message_id));
+
+        writer
+            .commit()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        Ok(())
+    }
+
+    /// Update a message in the search index (delete + re-add).
+    pub fn update_message(&self, msg: &StoredMessage) -> io::Result<()> {
+        self.delete_message(msg.id)?;
+        self.add_message(msg)?;
+        Ok(())
+    }
+
     /// Combine a text query with an optional date range filter.
     fn combine_with_date_filter(
         &self,
