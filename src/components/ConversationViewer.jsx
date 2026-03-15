@@ -40,6 +40,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
   const [conversationInfo, setConversationInfo] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [searchSortOrder, setSearchSortOrder] = useState("new"); // "new" or "old"
   const [isSearching, setIsSearching] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
@@ -388,8 +389,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
       setIsSearching(true);
       setSearchActive(true);
       setSearchResults([]); // Clear previous results immediately
+      setSearchTotalCount(0);
 
-      const messageIds = await invoke("search_messages", {
+      const searchResponse = await invoke("search_messages", {
         importId,
         query: searchQuery,
         limit: 100,
@@ -397,7 +399,9 @@ function ConversationViewer({ importId, theme, debugMode }) {
         beforeTimestamp,
       });
 
-      console.log("Search returned message IDs:", messageIds);
+      const messageIds = searchResponse.ids;
+      setSearchTotalCount(searchResponse.total_count);
+      console.log("Search returned message IDs:", messageIds, "total:", searchResponse.total_count);
 
       const results = [];
       for (const id of messageIds) {
@@ -453,6 +457,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
   function clearSearch() {
     setSearchQuery("");
     setSearchResults([]);
+    setSearchTotalCount(0);
     setSearchActive(false);
     setIsSearching(false);
   }
@@ -867,7 +872,7 @@ function ConversationViewer({ importId, theme, debugMode }) {
               {!isSearching && searchResults.length > 0 && (
                 <div className="search-results-header-new">
                   <span className="search-results-count">
-                    {searchResults.length} results
+                    {searchTotalCount} results
                   </span>
                   <div className="search-sort-buttons">
                     <button

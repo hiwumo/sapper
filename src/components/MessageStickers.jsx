@@ -19,6 +19,7 @@ function MessageStickers({ stickers, importPath, onImageClick }) {
               src={stickerUrl}
               alt={sticker.name || "Sticker"}
               loading="lazy"
+              onError={() => console.warn(`[ASSET_FAIL] sticker failed to load: ${sticker.sourceUrl || "unknown"}`)}
             />
           </div>
         );

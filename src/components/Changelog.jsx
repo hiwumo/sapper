@@ -3,23 +3,18 @@ import { X } from "lucide-react";
 import "./Changelog.css";
 
 const CHANGELOG = {
-  "0.3.1": {
-    date: "2025-01-08",
+  "0.4.1": {
+    date: "2025-03-15",
     changes: [
       {
-        type: "feature",
-        title: "Version Compatibility System",
-        description: "Keep your conversations stable and up to date",
-      },
-      {
-        type: "feature",
-        title: "Discord Rich Presence",
-        description: "No extra details are shown for privacy :)",
-      },
-      {
         type: "improvement",
-        title: "UI Enhancements",
-        description: "A much smoother and nicer UI!",
+        title: "Better Searching",
+        description: "Should be perfect now!",
+      },
+      {
+        type: "fix",
+        title: "GIFs, videos, and audios now load",
+        description: "yippee",
       },
     ],
   },
@@ -52,7 +47,27 @@ const CHANGELOG = {
         description: "Gifs, videos, and audio now load properly; and images are no longer clipped!",
       }
     ]
-  }
+  },
+  "0.3.1": {
+    date: "2025-01-08",
+    changes: [
+      {
+        type: "feature",
+        title: "Version Compatibility System",
+        description: "Keep your conversations stable and up to date",
+      },
+      {
+        type: "feature",
+        title: "Discord Rich Presence",
+        description: "No extra details are shown for privacy :)",
+      },
+      {
+        type: "improvement",
+        title: "UI Enhancements",
+        description: "A much smoother and nicer UI!",
+      },
+    ],
+  },
 };
 
 function Changelog({ isOpen, onClose, version }) {

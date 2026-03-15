@@ -5,7 +5,7 @@ use std::ops::Bound;
 use std::path::Path;
 use tantivy::collector::TopDocs;
 use tantivy::query::{
-    BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, QueryParser, RangeQuery,
+    BooleanQuery, BoostQuery, Occur, Query, QueryParser, RangeQuery,
 };
 use tantivy::schema::*;
 use tantivy::tokenizer::*;
@@ -320,10 +320,9 @@ impl MessageSearchIndex {
     /// Search messages with optional date filtering.
     ///
     /// Supports:
-    /// - Multi-field ranking: raw exact > phrase > stemmed > prefix > fuzzy typo > sender
+    /// - Multi-field ranking: raw exact > phrase > stemmed > prefix > sender
     /// - `from:username` syntax to filter by sender
     /// - Quoted `"exact phrase"` searches
-    /// - Real typo tolerance via edit-distance fuzzy queries (for terms >= 4 chars)
     /// - Multiplicative freshness factor (relevance stays primary)
     pub fn search(
         &self,
@@ -331,7 +330,7 @@ impl MessageSearchIndex {
         limit: usize,
         after_timestamp: Option<u64>,
         before_timestamp: Option<u64>,
-    ) -> io::Result<Vec<u64>> {
+    ) -> io::Result<(Vec<u64>, usize)> {
         let searcher = self.reader.searcher();
 
         // Resolve fields — fail gracefully for old schema
@@ -361,7 +360,7 @@ impl MessageSearchIndex {
         let (content_query_str, sender_filter) = parse_query_syntax(query_str);
 
         if content_query_str.is_empty() && sender_filter.is_none() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), 0));
         }
 
         // ---- Build sub-queries ----
@@ -411,18 +410,6 @@ impl MessageSearchIndex {
                     sub_queries.push((Occur::Should, Box::new(BoostQuery::new(q, 0.5))));
                 }
 
-                // 5. Fuzzy typo-tolerant queries (edit distance 1, terms >= 4 chars)
-                for word in &words {
-                    let lower = word.to_lowercase();
-                    if lower.len() >= 4 {
-                        let term = Term::from_field_text(content_raw_field, &lower);
-                        let fuzzy_q = FuzzyTermQuery::new(term, 1, true);
-                        sub_queries.push((
-                            Occur::Should,
-                            Box::new(BoostQuery::new(Box::new(fuzzy_q), 1.0)),
-                        ));
-                    }
-                }
             }
         }
 
@@ -442,7 +429,7 @@ impl MessageSearchIndex {
         }
 
         if sub_queries.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), 0));
         }
 
         let combined_text_query: Box<dyn Query> = Box::new(BooleanQuery::new(sub_queries));
@@ -500,6 +487,7 @@ impl MessageSearchIndex {
         }
 
         // Sort descending by score
+        let total_count = scored.len();
         let mut scored_vec: Vec<(f32, u64)> =
             scored.into_iter().map(|(id, s)| (s, id)).collect();
         scored_vec.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -510,7 +498,7 @@ impl MessageSearchIndex {
             .map(|(_, id)| id)
             .collect();
 
-        Ok(message_ids)
+        Ok((message_ids, total_count))
     }
 
     /// Combine a text query with an optional date range filter.

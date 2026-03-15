@@ -110,6 +110,7 @@ function CustomVideoPlayer({ src, type }) {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onError={(e) => console.warn(`[ASSET_FAIL] video player error: ${src.split("/").pop()} - ${e.target.error?.message || "unknown"}`)}
       >
         <source src={src} type={type} />
       </video>
@@ -192,6 +193,7 @@ function CustomAudioPlayer({ src, type, fileName }) {
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
+        onError={(e) => console.warn(`[ASSET_FAIL] audio player error: ${fileName || src.split("/").pop()} - ${e.target.error?.message || "unknown"}`)}
       >
         <source src={src} type={type} />
       </audio>
@@ -219,6 +221,26 @@ function CustomAudioPlayer({ src, type, fileName }) {
 function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsVideo, debugMode }) {
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+
+  // Log asset URLs and track load failures in debug mode
+  useEffect(() => {
+    if (!debugMode) return;
+    if (directImageUrl) {
+      const isDirect = /^https?:\/\//.test(directImageUrl);
+      console.log(`[ASSET_DEBUG] directImage: ${isDirect ? "[remote_url]" : directImageUrl.split("/").pop()} isVideo=${!!directIsVideo}`);
+    }
+    if (mediaRefs && mediaRefs.length > 0) {
+      mediaRefs.forEach((ref, i) => {
+        const fileName = ref.split("\\").pop().split("/").pop();
+        const ext = fileName.split(".").pop().toLowerCase();
+        const isImage = /^(jpg|jpeg|png|gif|webp|apng)$/i.test(ext);
+        const isVideo = /^(mp4|webm|mov|avi|mkv|ogv|m4v)$/i.test(ext);
+        const isAudio = /^(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(ext);
+        const type = isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file";
+        console.log(`[ASSET_DEBUG] mediaRef[${i}]: ${fileName} type=${type} path=${ref}`);
+      });
+    }
+  }, [mediaRefs, directImageUrl, debugMode]);
 
   if ((!mediaRefs || mediaRefs.length === 0) && !directImageUrl) return null;
 
@@ -297,12 +319,14 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                     loop
                     muted
                     playsInline
+                    onError={() => debugMode && console.warn(`[ASSET_FAIL] video failed to load: ${img.fileName || img.ref.split("/").pop()}`)}
                   />
                 ) : (
                   <img
                     src={img.isDirect ? img.ref : getAttachmentUrl(img.ref)}
                     alt={img.fileName}
                     loading="lazy"
+                    onError={() => debugMode && console.warn(`[ASSET_FAIL] image failed to load: ${img.fileName}`)}
                   />
                 )}
                 {debugMode && (
@@ -386,11 +410,13 @@ function MessageAttachments({ mediaRefs, onImageClick, directImageUrl, directIsV
                   loop
                   muted
                   playsInline
+                  onError={() => debugMode && console.warn(`[ASSET_FAIL] carousel video failed: ${images[carouselIndex].fileName || "unknown"}`)}
                 />
               ) : (
                 <img
                   src={images[carouselIndex].isDirect ? images[carouselIndex].ref : getAttachmentUrl(images[carouselIndex].ref)}
                   alt={images[carouselIndex].fileName}
+                  onError={() => debugMode && console.warn(`[ASSET_FAIL] carousel image failed: ${images[carouselIndex].fileName || "unknown"}`)}
                 />
               )}
             </div>

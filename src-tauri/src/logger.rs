@@ -44,18 +44,31 @@ pub fn init_logging() -> Result<(PathBuf, LogReloadHandle), Box<dyn std::error::
     let initial_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let (filter_layer, reload_handle) = reload::Layer::new(initial_filter);
 
-    // Set up the logging subscriber with both file and stdout outputs
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(
-            fmt::layer()
-                .with_writer(file_appender)
-                .with_ansi(false)
-                .with_target(true)
-                .with_line_number(true),
-        )
-        .with(fmt::layer().with_writer(std::io::stdout).with_target(false))
-        .init();
+    // Set up the logging subscriber
+    // In release builds on Windows, there is no console (windows_subsystem = "windows"),
+    // so only write to the file appender. Stdout is only available in debug builds.
+    let file_layer = fmt::layer()
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .with_target(true)
+        .with_line_number(true);
+
+    #[cfg(debug_assertions)]
+    {
+        tracing_subscriber::registry()
+            .with(filter_layer)
+            .with(file_layer)
+            .with(fmt::layer().with_writer(std::io::stdout).with_target(false))
+            .init();
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        tracing_subscriber::registry()
+            .with(filter_layer)
+            .with(file_layer)
+            .init();
+    }
 
     let handle = LogReloadHandle { handle: Some(reload_handle) };
 

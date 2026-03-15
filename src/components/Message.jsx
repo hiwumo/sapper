@@ -210,6 +210,24 @@ function parseMarkdown(text) {
     return `<ol class="message-list-ordered">${match}</ol>`;
   });
 
+  // Parse inline formatting (order matters for nested combinations)
+  // Strikethrough
+  result = result.replace(/~~(.+?)~~/g, '<s>$1</s>');
+  // __***bold italic underline***__ or __***bold italic underline***__
+  result = result.replace(/__\*\*\*(.+?)\*\*\*__/g, '<u><strong><em>$1</em></strong></u>');
+  // __**bold underline**__
+  result = result.replace(/__\*\*(.+?)\*\*__/g, '<u><strong>$1</strong></u>');
+  // __*italic underline*__
+  result = result.replace(/__\*(.+?)\*__/g, '<u><em>$1</em></u>');
+  // ***bold and italic***
+  result = result.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  // **bold**
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // *italic*
+  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // __underline__
+  result = result.replace(/__(.+?)__/g, '<u>$1</u>');
+
   return result;
 }
 
@@ -238,7 +256,7 @@ function replaceMentions(text, mentions) {
     const user = mentions.find(m => m.id === id);
     if (user) {
       const displayName = user.nickname || user.name;
-      return `__MENTION_${id}__${displayName}__MENTIONEND__`;
+      return `\x01MENTION_${id}\x01${displayName}\x01MENTIONEND\x01`;
     }
     return match;
   });
@@ -256,7 +274,7 @@ function processContent(message, importPath, convertFileSrc) {
   processedContent = processedContent.replace(fencedCodeRegex, (match, lang, code) => {
     const idx = replacements.length;
     replacements.push({ type: 'codeblock', lang: lang || '', code: code.replace(/\n$/, '') });
-    return `__CODEBLOCK_${idx}__`;
+    return `\x01CODEBLOCK_${idx}\x01`;
   });
 
   // 2. Extract inline code
@@ -264,7 +282,7 @@ function processContent(message, importPath, convertFileSrc) {
   processedContent = processedContent.replace(inlineCodeRegex, (match, code) => {
     const idx = replacements.length;
     replacements.push({ type: 'inlinecode', code });
-    return `__INLINECODE_${idx}__`;
+    return `\x01INLINECODE_${idx}\x01`;
   });
 
   // 3. Replace mentions
@@ -276,23 +294,23 @@ function processContent(message, importPath, convertFileSrc) {
     for (const m of mentions) {
       const displayName = m.nickname || m.name;
       // Only replace if not already wrapped by the <@id> replacement above
-      if (!processedContent.includes(`__MENTION_${m.id}__`)) {
+      if (!processedContent.includes(`\x01MENTION_${m.id}\x01`)) {
         const escaped = displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const atMentionRegex = new RegExp(`@${escaped}`, 'g');
         processedContent = processedContent.replace(atMentionRegex, (match) => {
           const idx = replacements.length;
           replacements.push({ type: 'mention', name: displayName });
-          return `__MENTIONOBJ_${idx}__`;
+          return `\x01MENTIONOBJ_${idx}\x01`;
         });
       }
     }
   }
 
-  // Convert __MENTION_id__name__MENTIONEND__ to placeholder objects
-  processedContent = processedContent.replace(/__MENTION_(\d+)__(.+?)__MENTIONEND__/g, (match, id, name) => {
+  // Convert \x01MENTION_id\x01name\x01MENTIONEND\x01 to placeholder objects
+  processedContent = processedContent.replace(/\x01MENTION_(\d+)\x01(.+?)\x01MENTIONEND\x01/g, (match, id, name) => {
     const idx = replacements.length;
     replacements.push({ type: 'mention', name });
-    return `__MENTIONOBJ_${idx}__`;
+    return `\x01MENTIONOBJ_${idx}\x01`;
   });
 
   // 4. Extract markdown links (including GIF links)
@@ -301,10 +319,10 @@ function processContent(message, importPath, convertFileSrc) {
     const idx = replacements.length;
     if (isGifUrl(url)) {
       replacements.push({ type: 'gif', url });
-      return `__GIF_${idx}__`;
+      return `\x01GIF_${idx}\x01`;
     } else {
       replacements.push({ type: 'mdlink', text, url });
-      return `__MDLINK_${idx}__`;
+      return `\x01MDLINK_${idx}\x01`;
     }
   });
 
@@ -315,13 +333,13 @@ function processContent(message, importPath, convertFileSrc) {
     const url = match;
     if (isGifUrl(url)) {
       replacements.push({ type: 'gif', url });
-      return `__GIF_${idx}__`;
+      return `\x01GIF_${idx}\x01`;
     } else if (isMediaUrl(url)) {
       replacements.push({ type: 'media', url });
-      return `__MEDIA_${idx}__`;
+      return `\x01MEDIA_${idx}\x01`;
     } else {
       replacements.push({ type: 'url', url });
-      return `__URL_${idx}__`;
+      return `\x01URL_${idx}\x01`;
     }
   });
 
@@ -329,7 +347,7 @@ function processContent(message, importPath, convertFileSrc) {
   const markdownParsed = parseMarkdown(processedContent);
 
   // Split by ALL placeholders and reconstruct
-  const placeholderRegex = /__(CODEBLOCK|INLINECODE|MENTIONOBJ|MDLINK|URL|GIF|MEDIA)_(\d+)__/g;
+  const placeholderRegex = /\x01(CODEBLOCK|INLINECODE|MENTIONOBJ|MDLINK|URL|GIF|MEDIA)_(\d+)\x01/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -441,6 +459,7 @@ function processContent(message, importPath, convertFileSrc) {
           alt={emojiObj.name}
           className={emojiClass}
           draggable={false}
+          onError={() => console.warn(`[ASSET_FAIL] emoji failed to load: ${emojiObj.imageUrl || "unknown"}`)}
         />
       );
     });
@@ -449,10 +468,83 @@ function processContent(message, importPath, convertFileSrc) {
   return processedParts.flat().filter(p => p !== null);
 }
 
+function logMessageDebug(message, debugMode) {
+  if (!debugMode) return;
+
+  const attachmentCount = message.mediaRefs?.length || 0;
+  const embedCount = message.embeds?.length || 0;
+  const stickerCount = message.stickers?.length || 0;
+  const hasContent = !!(message.content && message.content.length > 0);
+  const contentLength = message.content?.length || 0;
+  const hasReply = !!message.referencedMessage;
+  const mentionCount = message.mentions?.length || 0;
+  const emojiCount = message.inlineEmojis?.length || 0;
+
+  const assetUrls = [];
+
+  // Collect attachment paths
+  if (message.mediaRefs) {
+    message.mediaRefs.forEach((ref, i) => {
+      const fileName = ref.split("\\").pop().split("/").pop();
+      assetUrls.push(`attachment[${i}]: ${fileName}`);
+    });
+  }
+
+  // Collect embed asset URLs
+  if (message.embeds) {
+    message.embeds.forEach((embed, i) => {
+      if (embed.thumbnail?.url) {
+        const isLocal = !/^https?:\/\//.test(embed.thumbnail.url);
+        assetUrls.push(`embed[${i}].thumbnail: ${isLocal ? embed.thumbnail.url : "[remote_url]"} (${isLocal ? "local" : "remote"})`);
+      }
+      if (embed.video?.url) {
+        const isLocal = !/^https?:\/\//.test(embed.video.url);
+        assetUrls.push(`embed[${i}].video: ${isLocal ? embed.video.url : "[remote_url]"} (${isLocal ? "local" : "remote"})`);
+      }
+      if (embed.image?.url) {
+        const isLocal = !/^https?:\/\//.test(embed.image.url);
+        assetUrls.push(`embed[${i}].image: ${isLocal ? embed.image.url : "[remote_url]"} (${isLocal ? "local" : "remote"})`);
+      }
+    });
+  }
+
+  // Collect sticker URLs
+  if (message.stickers) {
+    message.stickers.forEach((sticker, i) => {
+      if (sticker.sourceUrl) {
+        assetUrls.push(`sticker[${i}]: ${sticker.sourceUrl}`);
+      }
+    });
+  }
+
+  const summary = [
+    `[MSG_DEBUG] id=${message.id}`,
+    `type=${message.type || "Default"}`,
+    `hasContent=${hasContent}(${contentLength}chars)`,
+    `attachments=${attachmentCount}`,
+    `embeds=${embedCount}`,
+    `stickers=${stickerCount}`,
+    `mentions=${mentionCount}`,
+    `emojis=${emojiCount}`,
+    `hasReply=${hasReply}`,
+  ].join(" | ");
+
+  console.log(summary);
+
+  if (assetUrls.length > 0) {
+    console.log(`[MSG_DEBUG] id=${message.id} assets: ${assetUrls.join(", ")}`);
+  }
+}
+
 function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp, convertFileSrc, onReplyClick, debugMode, onShowRawPayload }) {
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef(null);
+
+  // Log message debug info on mount/update when debug mode is on
+  useEffect(() => {
+    logMessageDebug(message, debugMode);
+  }, [message.id, debugMode]);
 
   const handleContextMenu = (e) => {
     if (!debugMode) return;
@@ -604,6 +696,7 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
           <MessageEmbeds
             embeds={message.embeds}
             importPath={importPath}
+            debugMode={debugMode}
           />
         )}
       </div>

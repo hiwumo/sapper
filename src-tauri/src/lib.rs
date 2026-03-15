@@ -315,6 +315,12 @@ fn load_messages(
     Ok(result)
 }
 
+#[derive(serde::Serialize)]
+struct SearchResult {
+    ids: Vec<u64>,
+    total_count: usize,
+}
+
 #[tauri::command]
 fn search_messages(
     state: State<AppState>,
@@ -323,7 +329,7 @@ fn search_messages(
     limit: usize,
     after_timestamp: Option<u64>,
     before_timestamp: Option<u64>
-) -> Result<Vec<u64>, String> {
+) -> Result<SearchResult, String> {
     use std::path::PathBuf;
 
     info!(
@@ -358,14 +364,14 @@ fn search_messages(
         e.to_string()
     })?;
 
-    let result = search_index.search(&query, limit, after_timestamp, before_timestamp).map_err(|e| {
+    let (ids, total_count) = search_index.search(&query, limit, after_timestamp, before_timestamp).map_err(|e| {
         error!("Search failed: {}", e);
         e.to_string()
     })?;
 
-    info!("Search returned {} results", result.len());
-    trace!("Search result message IDs: {:?}", result);
-    Ok(result)
+    info!("Search returned {} results (total matches: {})", ids.len(), total_count);
+    trace!("Search result message IDs: {:?}", ids);
+    Ok(SearchResult { ids, total_count })
 }
 
 #[tauri::command]
