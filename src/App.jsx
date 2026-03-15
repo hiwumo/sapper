@@ -20,6 +20,7 @@ import Settings from "./components/Settings";
 import MissingAssetsDialog from "./components/MissingAssetsDialog";
 import Changelog from "./components/Changelog";
 import Guide from "./components/Guide";
+import UpdateNotification from "./components/UpdateNotification";
 import { ToastProvider, useToast } from "./components/ToastContainer";
 import { getSavedTheme, themes } from "./themes";
 
@@ -617,6 +618,7 @@ function AppContent() {
 
   return (
     <div className="app" style={themeStyle}>
+      <UpdateNotification />
       {updating && <ProgressDialog message="Updating conversations..." />}
 
       <ImportDialog
