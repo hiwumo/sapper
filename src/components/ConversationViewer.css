@@ -757,6 +757,12 @@
   overflow: hidden;
 }
 
+.tenor-gif-embed video,
+.tenor-gif-embed iframe {
+  display: block;
+  margin: 0;
+}
+
 /* Giphy Embed */
 .message-giphy-embed {
   display: block;

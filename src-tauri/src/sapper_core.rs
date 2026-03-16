@@ -4,6 +4,7 @@ use crate::search::MessageSearchIndex;
 use std::fs;
 use std::io::{ self, Read };
 use std::path::{ Path, PathBuf };
+use tracing::instrument;
 use uuid::Uuid;
 
 pub struct SapperCore {
@@ -100,6 +101,7 @@ impl SapperCore {
         self.import_conversation_with_callbacks(json_path, alias, |_, _, _, _| {}, &never_cancelled)
     }
 
+    #[instrument(skip_all, fields(json_path))]
     pub fn import_conversation_with_callbacks<F>(
         &self,
         json_path: &str,
@@ -236,6 +238,7 @@ impl SapperCore {
         }
     }
 
+    #[instrument(skip_all, fields(message_count = export.messages.len()))]
     fn convert_messages_to_stored(
         &self,
         export: &DiscordExport,
@@ -299,6 +302,7 @@ impl SapperCore {
         Ok(stored_messages)
     }
 
+    #[instrument(skip_all)]
     fn parse_export(&self, path: &Path) -> io::Result<DiscordExport> {
         let contents = fs::read_to_string(path)?;
         serde_json::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -1145,11 +1149,22 @@ impl SapperCore {
         // Load the original export
         let export_data = self.parse_export(&export_path)?;
 
-        // Recreate message storage
-        let stored_messages = self.convert_messages_to_stored(&export_data, &import_dir)?;
+        // Extract user-sent messages from existing chunks before rebuilding
+        let storage = MessageStorage::new(import_dir.clone());
+        let user_messages = storage.extract_user_messages()?;
+
+        // Recreate message storage from export
+        let mut stored_messages = self.convert_messages_to_stored(&export_data, &import_dir)?;
+
+        // Re-append user messages with updated IDs
+        let mut next_id = stored_messages.len() as u64;
+        for mut user_msg in user_messages {
+            user_msg.id = next_id;
+            next_id += 1;
+            stored_messages.push(user_msg);
+        }
 
         // Recreate chunks
-        let storage = MessageStorage::new(import_dir.clone());
         storage.create_chunks(stored_messages.clone())?;
 
         // Recreate search index

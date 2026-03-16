@@ -490,6 +490,23 @@ function AppContent() {
     }
   }
 
+  async function reimportConversation(importId) {
+    try {
+      setUpdating(true);
+      await invoke("batch_reimport_conversations", {
+        importIds: [importId],
+      });
+      toast.success("Conversation reimported successfully");
+      await loadImports();
+      setActiveView(importId);
+    } catch (error) {
+      console.error("Reimport failed:", error);
+      toast.error(`Reimport failed: ${error}`);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   async function deleteImport(importId) {
     setConfirmDeleteImport(importId);
   }
@@ -803,6 +820,7 @@ function AppContent() {
           onDeleteImport={deleteImport}
           onExportConversation={exportConversation}
           onInfoClick={setInfoImport}
+          onReimport={reimportConversation}
           incompatibleImports={incompatibleImports}
           onBatchUpdate={handleBatchUpdate}
           onReorder={reorderImports}

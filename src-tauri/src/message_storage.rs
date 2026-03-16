@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use tracing::instrument;
 
 const CHUNK_SIZE: usize = 500;
 
@@ -45,6 +46,8 @@ pub struct ChunkMeta {
 pub struct ChunkIndex {
     pub chunks: Vec<ChunkMeta>,
     pub total_messages: usize,
+    #[serde(default)]
+    pub pinned_message_ids: Vec<u64>,
 }
 
 impl ChunkIndex {
@@ -52,6 +55,7 @@ impl ChunkIndex {
         Self {
             chunks: Vec::new(),
             total_messages: 0,
+            pinned_message_ids: Vec::new(),
         }
     }
 
@@ -84,12 +88,18 @@ impl MessageStorage {
         Self { import_dir }
     }
 
+    #[instrument(skip_all, fields(message_count = messages.len()))]
     pub fn create_chunks(&self, messages: Vec<StoredMessage>) -> io::Result<ChunkIndex> {
         let chunks_dir = self.import_dir.join("chunks");
         fs::create_dir_all(&chunks_dir)?;
 
         let mut chunk_index = ChunkIndex::new();
         chunk_index.total_messages = messages.len();
+        chunk_index.pinned_message_ids = messages
+            .iter()
+            .filter(|m| m.is_pinned)
+            .map(|m| m.id)
+            .collect();
 
         for (chunk_id, chunk) in messages.chunks(CHUNK_SIZE).enumerate() {
             let start_id = chunk.first().map(|m| m.id).unwrap_or(0);
@@ -119,32 +129,46 @@ impl MessageStorage {
         Ok(chunk_index)
     }
 
+    /// Extract all user-sent messages from existing chunks (before reimport).
+    pub fn extract_user_messages(&self) -> io::Result<Vec<StoredMessage>> {
+        let index = match self.load_chunk_index() {
+            Ok(idx) => idx,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let mut user_messages = Vec::new();
+        for chunk_meta in &index.chunks {
+            if let Ok(messages) = self.load_chunk(chunk_meta) {
+                for msg in messages {
+                    if msg.is_user_message {
+                        user_messages.push(msg);
+                    }
+                }
+            }
+        }
+
+        Ok(user_messages)
+    }
+
+    #[instrument(skip_all, fields(chunk_id = chunk_meta.chunk_id, message_count = chunk_meta.message_count))]
     pub fn load_chunk(&self, chunk_meta: &ChunkMeta) -> io::Result<Vec<StoredMessage>> {
         let contents = fs::read_to_string(&chunk_meta.file_path)?;
         serde_json::from_str(&contents).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
+    #[instrument(skip_all)]
     pub fn load_chunk_index(&self) -> io::Result<ChunkIndex> {
         let index_path = self.import_dir.join("chunk_index.json");
         ChunkIndex::load(&index_path)
     }
 
+    #[instrument(skip_all)]
     pub fn get_pinned_message_ids(&self) -> io::Result<Vec<u64>> {
         let index = self.load_chunk_index()?;
-        let mut pinned_ids = Vec::new();
-
-        for chunk_meta in &index.chunks {
-            let messages = self.load_chunk(chunk_meta)?;
-            for msg in &messages {
-                if msg.is_pinned {
-                    pinned_ids.push(msg.id);
-                }
-            }
-        }
-
-        Ok(pinned_ids)
+        Ok(index.pinned_message_ids)
     }
 
+    #[instrument(skip_all, fields(start_idx, count))]
     pub fn load_messages_range(
         &self,
         start_idx: usize,

@@ -696,9 +696,11 @@ function Message({ message, isGrouped, importPath, onImageClick, formatTimestamp
   if ((onlyImageUrl || onlyTenorUrl || onlyGiphyUrl) && message.embeds?.length > 0) {
     for (const embed of message.embeds) {
       // Check for local thumbnail (GIF) or video (Tenor stores as MP4)
-      const localThumb = embed.thumbnail?.url && !/^https?:\/\//.test(embed.thumbnail.url)
+      // Only treat as local if the URL contains a path separator (real exported paths have directory structure)
+      const isLocalPath = (url) => url && !/^https?:\/\//.test(url) && /[\\\/]/.test(url);
+      const localThumb = isLocalPath(embed.thumbnail?.url)
         ? embed.thumbnail.url : null;
-      const localVideo = embed.video?.url && !/^https?:\/\//.test(embed.video.url)
+      const localVideo = isLocalPath(embed.video?.url)
         ? embed.video.url : null;
 
       if (localThumb || localVideo) {

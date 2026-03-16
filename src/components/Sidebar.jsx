@@ -21,6 +21,7 @@ function Sidebar({
   onDeleteImport,
   onExportConversation,
   onInfoClick,
+  onReimport,
   incompatibleImports,
   onBatchUpdate,
   onReorder,
@@ -213,6 +214,7 @@ function Sidebar({
                   onDelete={() => onDeleteImport(imp.id)}
                   onExport={() => onExportConversation(imp.id)}
                   onInfo={() => onInfoClick(imp)}
+                  onReimport={() => onReimport(imp.id)}
                   onGripMouseDown={() => handleGripMouseDown(origIdx)}
                 />
               </div>

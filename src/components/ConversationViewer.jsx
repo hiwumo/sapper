@@ -278,23 +278,33 @@ function ConversationViewer({ importId, theme, debugMode, refreshKey }) {
       setPinnedMessages([]);
       setShowPinnedPanel(false);
 
+      console.time("[perf] loadInitialData total");
+
       // Log frontend info
       await invoke("log_frontend_info", { message: `Loading conversation: ${importId}` });
 
       // Get conversation info
+      console.time("[perf] get_conversation_info");
       const info = await invoke("get_conversation_info", { importId });
+      console.timeEnd("[perf] get_conversation_info");
       setConversationInfo(info);
 
       // Get import path for constructing file URLs
+      console.time("[perf] get_import_path");
       const path = await invoke("get_import_path", { importId });
+      console.timeEnd("[perf] get_import_path");
       setImportPath(path);
 
       // Get total message count
+      console.time("[perf] get_total_message_count");
       const total = await invoke("get_total_message_count", { importId });
+      console.timeEnd("[perf] get_total_message_count");
       setTotalMessages(total);
 
       // Check for saved position
+      console.time("[perf] get_conversation_position");
       const savedPosition = await invoke("get_conversation_position", { importId });
+      console.timeEnd("[perf] get_conversation_position");
 
       let startIndex, count;
       if (savedPosition !== null && savedPosition !== undefined) {
@@ -307,18 +317,24 @@ function ConversationViewer({ importId, theme, debugMode, refreshKey }) {
         count = MESSAGES_PER_PAGE;
       }
 
+      console.time("[perf] load_messages");
       const loadedMessages = await invoke("load_messages", {
         importId,
         startIndex,
         count,
       });
+      console.timeEnd("[perf] load_messages");
 
       console.log(loadedMessages);
+      console.time("[perf] setMessages (React state)");
       setMessages(loadedMessages);
+      console.timeEnd("[perf] setMessages (React state)");
 
       // Load pinned message IDs from backend (scans all chunks once)
       try {
+        console.time("[perf] get_pinned_message_ids");
         const pinnedIds = await invoke("get_pinned_message_ids", { importId });
+        console.timeEnd("[perf] get_pinned_message_ids");
         setPinnedMessages(pinnedIds.map(id => ({ messageId: id, originalPin: true })));
       } catch (pinErr) {
         console.error("Failed to load pinned messages:", pinErr);
@@ -326,12 +342,16 @@ function ConversationViewer({ importId, theme, debugMode, refreshKey }) {
 
       // Load mutable conversation setting
       try {
+        console.time("[perf] get_mutable_setting");
         const mutable = await invoke("get_mutable_setting", { importId });
+        console.timeEnd("[perf] get_mutable_setting");
         setIsMutable(mutable);
       } catch (mutErr) {
         console.error("Failed to load mutable setting:", mutErr);
         setIsMutable(false);
       }
+
+      console.timeEnd("[perf] loadInitialData total");
 
       // If we have a saved position, scroll to it after a brief delay
       if (savedPosition !== null && savedPosition !== undefined) {

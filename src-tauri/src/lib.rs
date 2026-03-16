@@ -266,6 +266,7 @@ fn get_conversation_position(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), fields(start_index, count))]
 fn load_messages(
     state: State<AppState>,
     import_id: String,
@@ -322,6 +323,7 @@ struct SearchResult {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state), fields(limit))]
 fn search_messages(
     state: State<AppState>,
     import_id: String,
@@ -375,6 +377,7 @@ fn search_messages(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<usize, String> {
     use std::path::PathBuf;
     trace!("Getting total message count for: {}", logger::sanitize_string(&import_id));
@@ -397,6 +400,7 @@ fn get_total_message_count(state: State<AppState>, import_id: String) -> Result<
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 fn get_pinned_message_ids(state: State<AppState>, import_id: String) -> Result<Vec<u64>, String> {
     use std::path::PathBuf;
 
@@ -416,6 +420,7 @@ fn get_pinned_message_ids(state: State<AppState>, import_id: String) -> Result<V
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 fn get_import_path(state: State<AppState>, import_id: String) -> Result<String, String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
@@ -430,6 +435,7 @@ fn get_import_path(state: State<AppState>, import_id: String) -> Result<String, 
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 fn get_conversation_info(state: State<AppState>, import_id: String) -> Result<ImportEntry, String> {
     let core_lock = state.core.lock().unwrap();
     let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
@@ -455,6 +461,7 @@ fn get_app_version() -> String {
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 fn get_members(state: State<AppState>, import_id: String) -> Result<serde_json::Value, String> {
     trace!("Getting members for import: {}", logger::sanitize_string(&import_id));
     let core_lock = state.core.lock().unwrap();

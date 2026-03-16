@@ -35,6 +35,7 @@ tauri-plugin-clipboard-manager = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
+tracing-chrome = "0.7"
 regex = "1.12"
 discord-rich-presence = "1.1"
 tauri-plugin-notification = "2"

@@ -22,7 +22,7 @@ function DropdownMenu({ items, onClose }) {
       {items.map((item, index) => (
         <button
           key={index}
-          className={`menu-item ${item.danger ? "danger" : ""}`}
+          className={`menu-item ${item.danger ? "danger" : ""} ${item.warn ? "warn" : ""}`}
           onClick={item.onClick}
         >
           {item.label}

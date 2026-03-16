@@ -49,6 +49,15 @@
   color: #fff;
 }
 
+.menu-item.warn {
+  color: #faa61a;
+}
+
+.menu-item.warn:hover {
+  background: #3d3520;
+  color: #ffc850;
+}
+
 .menu-item.danger {
   color: #ff6b6b;
 }

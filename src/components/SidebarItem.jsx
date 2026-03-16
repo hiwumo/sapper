@@ -13,6 +13,7 @@ function SidebarItem({
   onDelete,
   onExport,
   onInfo,
+  onReimport,
   onGripMouseDown,
   isDragging,
 }) {
@@ -47,6 +48,7 @@ function SidebarItem({
     { label: "Info", onClick: () => { setMenuOpen(false); onInfo(); } },
     { label: "Edit", onClick: () => { setMenuOpen(false); onEdit(); } },
     { label: "Export", onClick: () => { setMenuOpen(false); onExport(); } },
+    { label: "Reimport", warn: true, onClick: () => { setMenuOpen(false); onReimport(); } },
     { label: "Unimport", danger: true, onClick: () => { setMenuOpen(false); onDelete(); } },
   ];
 

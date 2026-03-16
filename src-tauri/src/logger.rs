@@ -1,17 +1,20 @@
 use regex::Regex;
 use std::path::PathBuf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, reload};
 
 /// Handle for dynamically reloading the log level filter at runtime.
 pub struct LogReloadHandle {
     handle: Option<reload::Handle<EnvFilter, tracing_subscriber::Registry>>,
+    /// Hold the chrome trace guard so the trace file is flushed on drop.
+    _chrome_guard: Option<std::sync::Mutex<tracing_chrome::FlushGuard>>,
 }
 
 impl LogReloadHandle {
     /// Create a no-op handle (used as fallback when logging init fails).
     pub fn noop() -> Self {
-        Self { handle: None }
+        Self { handle: None, _chrome_guard: None }
     }
 
     /// Switch between debug mode (trace level) and normal mode (info level).
@@ -53,11 +56,31 @@ pub fn init_logging() -> Result<(PathBuf, LogReloadHandle), Box<dyn std::error::
         .with_target(true)
         .with_line_number(true);
 
+    // Chrome trace layer (dev builds only) — writes trace JSON to ~/.sapper/logs/trace-{timestamp}.json
+    // View in chrome://tracing or https://ui.perfetto.dev
+    #[cfg(debug_assertions)]
+    let chrome_guard;
+
+    #[cfg(debug_assertions)]
+    let chrome_layer = {
+        let trace_file = log_dir.join(format!("trace-{}.json", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+        let (layer, guard) = ChromeLayerBuilder::new()
+            .file(trace_file)
+            .include_args(true)
+            .build();
+        chrome_guard = guard;
+        Some(layer)
+    };
+
+    #[cfg(not(debug_assertions))]
+    let chrome_layer: Option<tracing_chrome::ChromeLayer> = None;
+
     #[cfg(debug_assertions)]
     {
         tracing_subscriber::registry()
             .with(filter_layer)
             .with(file_layer)
+            .with(chrome_layer)
             .with(fmt::layer().with_writer(std::io::stdout).with_target(false))
             .init();
     }
@@ -70,7 +93,13 @@ pub fn init_logging() -> Result<(PathBuf, LogReloadHandle), Box<dyn std::error::
             .init();
     }
 
-    let handle = LogReloadHandle { handle: Some(reload_handle) };
+    let handle = LogReloadHandle {
+        handle: Some(reload_handle),
+        #[cfg(debug_assertions)]
+        _chrome_guard: Some(std::sync::Mutex::new(chrome_guard)),
+        #[cfg(not(debug_assertions))]
+        _chrome_guard: None,
+    };
 
     Ok((log_dir, handle))
 }
