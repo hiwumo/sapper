@@ -4,8 +4,23 @@ import "./Changelog.css";
 
 const CHANGELOG = {
   "0.4.1": {
-    date: "2025-03-15",
+    date: "2025-03-16",
     changes: [
+      {
+        type: "feature",
+        title: "Mutable Conversations",
+        description: "Send messages by enabling it in your conversation",
+      },
+      {
+        type: "feature",
+        title: "Blur messages",
+        description: "Useful for screenshotting",
+      },
+      {
+        type: "feature",
+        title: "Pinned Messages",
+        description: "See your old pinned messages, or pin new ones",
+      },
       {
         type: "improvement",
         title: "Better Searching",
