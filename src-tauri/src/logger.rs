@@ -1,6 +1,7 @@
 use regex::Regex;
 use std::path::PathBuf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+#[cfg(debug_assertions)]
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, reload};
 
@@ -71,9 +72,6 @@ pub fn init_logging() -> Result<(PathBuf, LogReloadHandle), Box<dyn std::error::
         chrome_guard = guard;
         Some(layer)
     };
-
-    #[cfg(not(debug_assertions))]
-    let chrome_layer: Option<tracing_chrome::ChromeLayer> = None;
 
     #[cfg(debug_assertions)]
     {
