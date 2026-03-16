@@ -58,6 +58,7 @@ import TenorEmbed from "./TenorEmbed";
 import GiphyEmbed from "./GiphyEmbed";
 import { Pin, Copy, Info, Pencil, Trash2, Eye, EyeOff, Users, Code, Pin as PinIcon } from "lucide-react";
 import { reportAssetFail } from "../assetCheck";
+import { getEmojiByName, getTwemojiUrl } from "../emojiData";
 
 /**
  * Build a usable URL for an emoji image reported in message.inlineEmojis.
@@ -345,11 +346,28 @@ function processContent(message, importPath, convertFileSrc) {
     }
   });
 
+  // 6. Replace :shortcode: emoji references with Twemoji images
+  processedContent = processedContent.replace(/:([a-z0-9_+\-]+):/gi, (match, name) => {
+    const emoji = getEmojiByName(name.toLowerCase());
+    if (!emoji) return match;
+    const idx = replacements.length;
+    replacements.push({ type: 'twemoji', name: emoji.name, unified: emoji.unified });
+    return `\x01TWEMOJI_${idx}\x01`;
+  });
+
+  // Determine if message is emoji-only (for sizing)
+  const textWithoutPlaceholders = processedContent.replace(/\x01\w+_\d+\x01/g, '').trim();
+  const allPlaceholders = processedContent.match(/\x01(\w+)_\d+\x01/g) || [];
+  const twemojiCount = allPlaceholders.filter(p => p.startsWith('\x01TWEMOJI')).length;
+  const hasNonEmojiPlaceholders = allPlaceholders.some(p => !p.startsWith('\x01TWEMOJI'));
+  const isEmojiOnly = textWithoutPlaceholders === '' && twemojiCount > 0 && !hasNonEmojiPlaceholders;
+  const useLargeTwemoji = isEmojiOnly && twemojiCount <= 30;
+
   // Now parse markdown on the text with placeholders
   const markdownParsed = parseMarkdown(processedContent);
 
   // Split by ALL placeholders and reconstruct
-  const placeholderRegex = /\x01(CODEBLOCK|INLINECODE|MENTIONOBJ|MDLINK|URL|GIF|MEDIA)_(\d+)\x01/g;
+  const placeholderRegex = /\x01(CODEBLOCK|INLINECODE|MENTIONOBJ|MDLINK|URL|GIF|MEDIA|TWEMOJI)_(\d+)\x01/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -417,6 +435,19 @@ function processContent(message, importPath, convertFileSrc) {
         >
           {part.url}
         </a>
+      );
+    }
+
+    if (part.type === 'twemoji') {
+      return (
+        <img
+          key={`twemoji-${partIdx}`}
+          src={getTwemojiUrl(part.unified)}
+          alt={`:${part.name}:`}
+          title={`:${part.name}:`}
+          className={useLargeTwemoji ? "inline-emoji-large" : "inline-emoji"}
+          draggable={false}
+        />
       );
     }
 

@@ -1282,6 +1282,20 @@ async fn get_import_preview(json_path: String) -> Result<ImportPreview, String> 
         .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[tauri::command]
+fn save_emoji_cache(state: State<AppState>, data: String) -> Result<(), String> {
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+    core.save_emoji_cache(&data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_emoji_cache(state: State<AppState>) -> Result<Option<String>, String> {
+    let core_lock = state.core.lock().unwrap();
+    let core = core_lock.as_ref().ok_or("SapperCore not initialized")?;
+    core.load_emoji_cache().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging first
@@ -1362,7 +1376,9 @@ pub fn run() {
                 get_mutable_member,
                 send_user_message,
                 edit_user_message,
-                delete_user_message
+                delete_user_message,
+                save_emoji_cache,
+                load_emoji_cache
             ]
         )
         .run(tauri::generate_context!())

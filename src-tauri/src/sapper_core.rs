@@ -32,6 +32,7 @@ impl SapperCore {
         fs::create_dir_all(self.sapper_dir.join("imports"))?;
         fs::create_dir_all(self.sapper_dir.join("cache/parsed"))?;
         fs::create_dir_all(self.sapper_dir.join("cache/avatars"))?;
+        fs::create_dir_all(self.sapper_dir.join("cache/emojis"))?;
         fs::create_dir_all(self.sapper_dir.join("logs"))?;
 
         // Initialize metadata.json if it doesn't exist
@@ -89,6 +90,23 @@ impl SapperCore {
         fs::rename(temp_path, config_path)?;
 
         Ok(())
+    }
+
+    pub fn save_emoji_cache(&self, data: &str) -> io::Result<()> {
+        let emoji_path = self.sapper_dir.join("cache/emojis/data.json");
+        let temp_path = self.sapper_dir.join("cache/emojis/data.json.tmp");
+        fs::write(&temp_path, data)?;
+        fs::rename(temp_path, emoji_path)?;
+        Ok(())
+    }
+
+    pub fn load_emoji_cache(&self) -> io::Result<Option<String>> {
+        let emoji_path = self.sapper_dir.join("cache/emojis/data.json");
+        if !emoji_path.exists() {
+            return Ok(None);
+        }
+        let contents = fs::read_to_string(emoji_path)?;
+        Ok(Some(contents))
     }
 
     #[allow(dead_code)]
