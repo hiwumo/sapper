@@ -40,6 +40,11 @@ pub const VERSION_HISTORY: &[VersionLink] = &[
         from: "0.4.1",
         to: "0.4.2",
         compatibility: CompatibilityStatus::Incompatible,
+    },
+    VersionLink {
+        from: "0.4.2",
+        to: "0.4.3",
+        compatibility: CompatibilityStatus::Compatible,
     }
 ];
 

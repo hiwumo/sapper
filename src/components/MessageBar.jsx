@@ -8,7 +8,9 @@ import {
   replaceNativeWithShortcodes,
 } from "../emojiData";
 import EmojiPicker from "./EmojiPicker";
+import GifPicker from "./GifPicker";
 import "./EmojiPicker.css";
+import "./GifPicker.css";
 
 function GifIcon({ size = 20 }) {
   return (
@@ -30,9 +32,10 @@ function EmojiIcon({ size = 20 }) {
   );
 }
 
-function MessageBar({ onSend, channelName }) {
+function MessageBar({ onSend, channelName, messages, importPath }) {
   const [input, setInput] = useState("");
   const [showPicker, setShowPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [autocomplete, setAutocomplete] = useState(null); // { results, activeIndex, colonStart }
   const inputRef = useRef(null);
   const barRef = useRef(null);
@@ -82,6 +85,12 @@ function MessageBar({ onSend, channelName }) {
     insertEmoji(emoji);
     setShowPicker(false);
   }, [insertEmoji]);
+
+  const handleGifSelect = useCallback((gifUrl) => {
+    if (gifUrl) {
+      onSend(gifUrl);
+    }
+  }, [onSend]);
 
   const handleSend = useCallback(() => {
     const content = input.trim();
@@ -222,6 +231,16 @@ function MessageBar({ onSend, channelName }) {
           />
         )}
 
+        {/* GIF picker */}
+        {showGifPicker && (
+          <GifPicker
+            onSelect={handleGifSelect}
+            onClose={() => setShowGifPicker(false)}
+            messages={messages}
+            importPath={importPath}
+          />
+        )}
+
         <textarea
           ref={inputRef}
           className="message-bar-input"
@@ -232,14 +251,19 @@ function MessageBar({ onSend, channelName }) {
           rows={1}
         />
         <div className="message-bar-buttons">
-          <button className="message-bar-icon-btn" title="GIF" type="button">
+          <button
+            className="message-bar-icon-btn"
+            title="GIF"
+            type="button"
+            onClick={() => { setShowGifPicker((v) => !v); setShowPicker(false); }}
+          >
             <GifIcon size={20} />
           </button>
           <button
             className="message-bar-icon-btn"
             title="Emoji"
             type="button"
-            onClick={() => setShowPicker((v) => !v)}
+            onClick={() => { setShowPicker((v) => !v); setShowGifPicker(false); }}
           >
             <EmojiIcon size={20} />
           </button>

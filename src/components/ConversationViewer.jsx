@@ -1218,7 +1218,7 @@ function ConversationViewer({ importId, theme, debugMode, refreshKey }) {
         )}
 
         {/* Mutable Conversation Message Bar */}
-        {isMutable && <MessageBar onSend={handleSendMessage} channelName={conversationInfo?.channelName} />}
+        {isMutable && <MessageBar onSend={handleSendMessage} channelName={conversationInfo?.channelName} messages={messages} importPath={importPath} />}
         </div>{/* end messages-column */}
 
         {/* Member List / Search Results (20%) */}

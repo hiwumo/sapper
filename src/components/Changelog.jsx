@@ -3,6 +3,36 @@ import { X } from "lucide-react";
 import "./Changelog.css";
 
 const CHANGELOG = {
+  "0.4.3": {
+    date: "2025-03-16",
+    changes: [
+      {
+        type: "feature",
+        title: "Mutable Conversations",
+        description: "Send messages by enabling it in your conversation",
+      },
+      {
+        type: "feature",
+        title: "Blur messages",
+        description: "Useful for screenshotting",
+      },
+      {
+        type: "feature",
+        title: "Pinned Messages",
+        description: "See your old pinned messages, or pin new ones",
+      },
+      {
+        type: "improvement",
+        title: "Performance Improvements",
+        description: "Less memory usage!!",
+      },
+      {
+        type: "improvement",
+        title: "GIFs and emojis in message bar",
+        description: "GIFs dont work great, not sure why you would use them though",
+      },
+    ]
+  },
   "0.4.2": {
     date: "2025-03-16",
     changes: [
